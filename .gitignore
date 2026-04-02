@@ -68,36 +68,36 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Database files (use git-lfs if committing)
+# *.db
+# *.sqlite
+# *.sqlite3
 
-# Model checkpoints and datasets (should be downloaded, not committed)
-*.pt
-*.pth
-*.ckpt
-*.bin
-*.safetensors
-*.onnx
-*.h5
-*.hdf5
-*.joblib
-*.pkl
-*.pickle
+# Model checkpoints and datasets (use git-lfs if committing)
+# *.pt
+# *.pth
+# *.ckpt
+# *.bin
+# *.safetensors
+# *.onnx
+# *.h5
+# *.hdf5
+# *.joblib
+# *.pkl
+# *.pickle
 
 # HuggingFace datasets cache
 datasets/
 ~/.cache/huggingface/datasets/
 
-# Large data files (should use git-lfs if needed)
+# Large data files (use git-lfs if committing)
 data/raw/
 data/processed/
 data/external/
-*.parquet
-*.feather
-*.arrow
-*.parquet.*
+# *.parquet
+# *.feather
+# *.arrow
+# *.parquet.*
 
 # Logs
 *.log
@@ -145,7 +145,7 @@ output/
 results/
 predictions/
 checkpoints/
-models/
+# models/
 
 # HuggingFace Spaces
 app.py
@@ -153,8 +153,8 @@ requirements_hf.txt
 README_hf.md
 
 # Large files (use git-lfs)
-*.parquet
-prompts.json
+# *.parquet
+# prompts.json
 
 # Temporary Gradio files
 gradio_cached_examples/
