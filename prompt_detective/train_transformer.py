@@ -14,6 +14,7 @@ from transformers import get_linear_schedule_with_warmup
 
 from .models.transformer_model import TransformerModel
 from .processors.subword_processor import SubwordProcessor
+from .training.data_loader import load_data_from_parquet
 from .utils.device import get_device
 
 
@@ -146,32 +147,6 @@ class TransformerTrainer:
                 if patience_counter >= patience:
                     print(f"  Early stopping at epoch {epoch + 1}")
                     break
-
-
-def load_data_from_parquet(train_path, val_path, test_path):
-    """Load training data from parquet files."""
-    train_df = pd.read_parquet(train_path)
-    val_df = pd.read_parquet(val_path)
-    test_df = pd.read_parquet(test_path)
-
-    # Convert to list of dictionaries
-    train_data = []
-    for _, row in train_df.iterrows():
-        train_data.append(
-            {"text": row["text"], "label": 1 if row["is_injection"] else 0}
-        )
-
-    val_data = []
-    for _, row in val_df.iterrows():
-        val_data.append({"text": row["text"], "label": 1 if row["is_injection"] else 0})
-
-    test_data = []
-    for _, row in test_df.iterrows():
-        test_data.append(
-            {"text": row["text"], "label": 1 if row["is_injection"] else 0}
-        )
-
-    return train_data, val_data, test_data
 
 
 def collate_fn(batch):

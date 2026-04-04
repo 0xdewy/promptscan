@@ -31,12 +31,12 @@ def load_data_from_parquet(
     train_df = pd.read_parquet(train_path)
     val_df = pd.read_parquet(val_path)
 
-    # Convert to list of dictionaries with label field
+    # Convert to list of dictionaries with label field (optimized)
     def df_to_dict_list(df):
-        data = []
-        for _, row in df.iterrows():
-            data.append({"text": row["text"], "label": 1 if row["is_injection"] else 0})
-        return data
+        return [
+            {"text": text, "label": 1 if is_inj else 0}
+            for text, is_inj in zip(df["text"].tolist(), df["is_injection"].tolist())
+        ]
 
     train_data = df_to_dict_list(train_df)
     val_data = df_to_dict_list(val_df)

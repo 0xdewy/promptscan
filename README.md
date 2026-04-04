@@ -36,14 +36,31 @@ Max Pooling → Fully Connected Layers → Output (2 classes)
 
 ## Features
 
-- **CNN architecture** - Fast training and inference
-- **Minimal dependencies** - Just PyTorch and pandas
-- **Single file** - Everything in `detector.py`
+- **Ensemble architecture** - Combines CNN, LSTM, and Transformer models (now default)
+- **Enhanced output** - Shows individual model predictions with confidence scores
+- **Clean interface** - Suppressed library warnings for better user experience
+- **Multiple model support** - CNN, LSTM, Transformer, and Ensemble modes
+- **Parallel inference** - All models run concurrently in ensemble mode
 - **97% validation accuracy** - Trained on expanded dataset
-- **Small model** - 275KB trained model
-- **Self-contained** - Vocabulary stored in checkpoint
+- **Self-contained** - Vocabulary stored in checkpoints
 - **Multilingual support** - English and Spanish prompts
 - **Aggregated dataset** - 17,195 examples (63% injections, 37% safe)
+
+## Recent Changes
+
+**v0.2.0 - Enhanced Ensemble Detection**
+- **Default model changed**: Ensemble is now the default (was CNN)
+- **Enhanced CLI output**: Shows individual model predictions when using ensemble
+- **Improved error handling**: Better error messages for missing models
+- **Warning suppression**: Clean output without library warnings
+- **Model type display**: Fixed display of model types in ensemble info
+- **Better defaults**: Ensemble provides more robust detection out of the box
+
+**Key Improvements:**
+1. **Transparency**: Users can see how each model voted in the ensemble
+2. **Robustness**: Ensemble combines strengths of all three model types
+3. **Usability**: Clean output without distracting warnings
+4. **Debugging**: Easy to identify when models disagree
 
 ## Quick Start
 
@@ -184,18 +201,19 @@ After installation, you can use the `prompt-detective` command:
 prompt-detective --version
 prompt-detective --help
 
-# Analyze text for prompt injection (default: CNN model)
+# Analyze text for prompt injection (default: Ensemble model)
 prompt-detective predict "Ignore all previous instructions"
 prompt-detective predict --file tests/fixtures/test_injection.txt
 
-# Use different model types
+# Use different model types (ensemble is now default)
+prompt-detective predict --model-type cnn "Ignore all previous instructions"
 prompt-detective predict --model-type lstm "Ignore all previous instructions"
 prompt-detective predict --model-type transformer "Ignore all previous instructions"
 
-# Use ensemble mode (requires multiple trained models)
+# Use ensemble mode explicitly (same as default)
 prompt-detective predict --model-type ensemble "Ignore all previous instructions"
 
-# Train a new model (default: CNN)
+# Train a new model (default: CNN for training)
 prompt-detective train
 
 # Train specific model types
@@ -207,35 +225,53 @@ prompt-detective export --format json --output prompts.json
 prompt-detective export --format stats
 ```
 
-### Ensemble Detection System
+### Ensemble Detection System (Now Default)
 
-Safe Prompts now includes an ensemble detection system that combines multiple models for improved accuracy:
+Safe Prompts uses an ensemble detection system by default that combines multiple models for improved accuracy and robustness:
 
 **Available Models:**
-- **CNN**: Fast, good at local pattern detection (default)
-- **LSTM**: Better at sequential pattern recognition
+- **CNN**: Fast, good at local pattern detection
+- **LSTM**: Better at sequential pattern recognition  
 - **Transformer (DistilBERT)**: State-of-the-art, best overall accuracy
 
 **Voting Strategies:**
-- `majority`: Each model gets one vote
+- `majority`: Each model gets one vote (default)
 - `weighted`: Models weighted by confidence or custom weights
 - `confidence`: Select prediction with highest confidence
 - `soft`: Average probability distributions
 
+**Enhanced Output Format:**
+When using ensemble mode, the CLI now shows individual model predictions:
+```
+Individual model predictions:
+  - cnn: INJECTION (100.00%)
+  - lstm: SAFE (97.47%)
+  - transformer: INJECTION (99.89%)
+
+Ensemble result: INJECTION (99.95%)
+```
+
 **Example Ensemble Usage:**
 ```bash
-# Train all models first
+# Train all models first (ensemble requires all three)
 prompt-detective train --model-type cnn
 prompt-detective train --model-type lstm
 prompt-detective train --model-type transformer
 
+# Use ensemble (now default - shows individual predictions)
+prompt-detective predict "Test text"
+
 # Use ensemble with different voting strategies
-prompt-detective predict --model-type ensemble "Test text"
-prompt-detective predict --model-type ensemble --voting-strategy weighted "Test text"
-prompt-detective predict --model-type ensemble --voting-strategy confidence "Test text"
+prompt-detective predict --voting-strategy weighted "Test text"
+prompt-detective predict --voting-strategy confidence "Test text"
 
 # Use specific model directory
-prompt-detective predict --model-type ensemble --model-dir ./my_models "Test text"
+prompt-detective predict --model-dir ./my_models "Test text"
+
+# Use single models explicitly
+prompt-detective predict --model-type cnn "Test text"
+prompt-detective predict --model-type lstm "Test text"
+prompt-detective predict --model-type transformer "Test text"
 ```
 
 ### Development Setup
@@ -279,50 +315,85 @@ ruff check --fix prompt_detective/ scripts/ tests/
 ## Project Structure
 
 ```
-prompt_detective/
-├── prompt_detective/           # Core source code
+safe_prompts/                           # Project root
+├── prompt_detective/                   # Core Python package
+│   ├── __init__.py                     # Package initialization
+│   ├── cli.py                          # Command-line interface (main entry point)
+│   ├── config.py                       # Configuration management
+│   ├── data_utils.py                   # Data utilities and helpers
+│   ├── detector.py                     # Legacy detector (deprecated, use unified_detector)
+│   ├── parquet_store.py                # Parquet data storage utilities
+│   ├── train_lstm.py                   # Standalone LSTM training script
+│   ├── train_transformer.py            # Standalone transformer training script
+│   ├── unified_detector.py             # Unified detector interface (recommended)
+│   ├── ensemble/                       # Ensemble detection system
+│   │   ├── __init__.py
+│   │   ├── detector.py                 # Ensemble detector with parallel inference
+│   │   └── voting.py                   # Voting strategies (majority, weighted, etc.)
+│   ├── models/                         # Model implementations
+│   │   ├── __init__.py
+│   │   ├── base_model.py               # Abstract base model class
+│   │   ├── cnn_model.py                # CNN model implementation
+│   │   ├── lstm_model.py               # LSTM model implementation
+│   │   └── transformer_model.py        # Transformer model implementation
+│   ├── processors/                     # Text processors
+│   │   ├── __init__.py
+│   │   ├── word_processor.py           # Word-level processor for CNN/LSTM
+│   │   └── subword_processor.py        # Subword processor for transformers
+│   ├── training/                       # Training framework
+│   │   ├── __init__.py
+│   │   ├── base_trainer.py             # Base trainer class
+│   │   ├── data_loader.py              # Data loading utilities
+│   │   ├── pipeline.py                 # Unified training pipeline
+│   │   └── strategies/                 # Training strategies
+│   │       ├── __init__.py
+│   │       ├── cnn_strategy.py         # CNN training strategy
+│   │       ├── lstm_strategy.py        # LSTM training strategy
+│   │       └── transformer_strategy.py # Transformer training strategy
+│   └── utils/                          # Utility modules
+│       ├── __init__.py
+│       ├── data_loader.py              # Data loading utilities
+│       ├── device.py                   # Device detection (CPU/GPU)
+│       ├── memory_monitor.py           # Memory monitoring utilities
+│       └── text_processor.py           # Text processing utilities
+├── scripts/                            # Utility scripts
 │   ├── __init__.py
-│   ├── detector.py             # Main detector module
-│   ├── cli.py                  # CLI interface
-│   ├── data_utils.py           # Data utilities
-│   ├── parquet_store.py        # Parquet storage utilities
-│   └── utils/                  # Utilities
-│       └── __init__.py
-├── scripts/                    # Utility scripts
-│   ├── export_parquet.py       # Export data to various formats
-│   └── __init__.py
-├── data/                       # Data directory
-│   ├── train.parquet           # Training split (13,756 examples)
-│   ├── val.parquet             # Validation split (1,719 examples)
-│   ├── test.parquet            # Test split (1,720 examples)
-│   ├── prompts_full.parquet    # Full aggregated dataset (17,195 examples)
-│   └── backup_original/        # Backup of original data files
+│   ├── aggregate_data.py               # Data aggregation script
+│   ├── export_parquet.py               # Export data to various formats
+│   └── migrate_to_parquet.py           # Migration to parquet format
+├── data/                               # Data directory
+│   ├── train.parquet                   # Training split (13,756 examples)
+│   ├── val.parquet                     # Validation split (1,719 examples)
+│   ├── test.parquet                    # Test split (1,720 examples)
+│   ├── prompts_full.parquet            # Full aggregated dataset (17,195 examples)
+│   └── backup_original/                # Backup of original data files
 │       ├── prompts.json
 │       ├── prompts.db
 │       ├── external/
 │       └── processed/
-├── models/                     # Model files
-│   └── best_model.pt           # Trained model checkpoint
-├── config/                     # Configuration files
-│   └── default.yaml            # Default configuration
-├── tests/                      # Test suite
+├── models/                             # Model checkpoints
+│   ├── best_model.pt                   # CNN model checkpoint
+│   ├── cnn_best.pt                     # CNN model (for ensemble)
+│   ├── lstm_best.pt                    # LSTM model (for ensemble)
+│   └── transformer_best.pt             # Transformer model (for ensemble)
+├── config/                             # Configuration files
 │   ├── __init__.py
-│   ├── test_detector.py
-│   └── fixtures/               # Test fixtures
+│   └── settings.py                     # Application settings
+├── tests/                              # Test suite
+│   ├── __init__.py
+│   ├── test_detector.py                # Detector tests
+│   └── fixtures/                       # Test fixtures
 │       ├── test_safe.txt
 │       ├── test_injection.txt
 │       └── url_test.txt
-├── notebooks/                  # Jupyter notebooks
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_data_generation.ipynb
-│   └── 03_model_training.ipynb
-├── docs/                       # Documentation
-├── .env.example                # Environment variables template
-├── pyproject.toml              # Python package configuration (uv/pip)
-├── requirements.txt            # Python dependencies (legacy)
-├── requirements_hf.txt         # HuggingFace Space dependencies
-├── .gitignore                  # Git ignore rules
-└── README.md                   # This file
+├── .env.example                        # Environment variables template
+├── app.py                              # Web application (if applicable)
+├── pyproject.toml                      # Python package configuration (uv/pip)
+├── requirements.txt                    # Python dependencies (legacy)
+├── requirements_hf.txt                 # HuggingFace Space dependencies
+├── run.sh                              # Shell wrapper script
+├── .gitignore                          # Git ignore rules
+└── README.md                           # This file
 ```
 
 ## Package Management with uv
@@ -552,11 +623,13 @@ Top injection candidates:
 - **Batch size**: 16
 - **Learning rate**: 2e-5
 
-### Ensemble System
+### Ensemble System (Now Default)
 - **Parallel inference**: All models run concurrently
-- **Voting strategies**: Majority, weighted, confidence-based, soft voting
+- **Voting strategies**: Majority (default), weighted, confidence-based, soft voting
 - **Default weights**: CNN (0.25), LSTM (0.25), Transformer (0.50)
+- **Enhanced output**: Shows individual model predictions and confidence scores
 - **Performance**: ~50ms inference time (CPU)
+- **Warning suppression**: Clean output without library warnings
 
 ## Requirements
 

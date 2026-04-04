@@ -3,7 +3,6 @@
 Training script for LSTM model.
 """
 
-
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -13,6 +12,7 @@ from tqdm import tqdm
 
 from .models.lstm_model import LSTMModel
 from .processors.word_processor import WordProcessor
+from .training.data_loader import load_data_from_parquet
 from .utils.data_loader import PromptDataset
 from .utils.device import get_device
 
@@ -163,37 +163,6 @@ class LSTMTrainer:
             print("\n\nTraining interrupted by user")
             print(f"Best validation accuracy so far: {best_val_acc:.2%}")
             raise
-
-
-def load_data_from_parquet(train_path, val_path, test_path):
-    """Load training data from parquet files (optimized)."""
-    train_df = pd.read_parquet(train_path)
-    val_df = pd.read_parquet(val_path)
-    test_df = pd.read_parquet(test_path)
-
-    # Optimized conversion using vectorized operations
-    train_data = [
-        {"text": text, "label": 1 if is_inj else 0}
-        for text, is_inj in zip(
-            train_df["text"].tolist(), train_df["is_injection"].tolist()
-        )
-    ]
-
-    val_data = [
-        {"text": text, "label": 1 if is_inj else 0}
-        for text, is_inj in zip(
-            val_df["text"].tolist(), val_df["is_injection"].tolist()
-        )
-    ]
-
-    test_data = [
-        {"text": text, "label": 1 if is_inj else 0}
-        for text, is_inj in zip(
-            test_df["text"].tolist(), test_df["is_injection"].tolist()
-        )
-    ]
-
-    return train_data, val_data, test_data
 
 
 def train_lstm_model(

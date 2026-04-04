@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader
 from .data_utils import get_default_data_paths
 from .models.cnn_model import SimpleCNN
 from .processors.word_processor import WordProcessor
+from .training.data_loader import load_data_from_parquet
 from .utils.data_loader import PromptDataset
 from .utils.device import get_device
 
@@ -209,31 +210,6 @@ class SimplePromptDetector:
         for text in texts:
             results.append(self.predict(text))
         return results
-
-
-def load_data_from_parquet(
-    train_path="data/train.parquet",
-    val_path="data/val.parquet",
-    test_path="data/test.parquet",
-) -> Tuple[List[Dict], List[Dict], List[Dict]]:
-    """Load training data from parquet files."""
-    # Load pre-split data
-    train_df = pd.read_parquet(train_path)
-    val_df = pd.read_parquet(val_path)
-    test_df = pd.read_parquet(test_path)
-
-    # Convert to list of dictionaries with label field
-    def df_to_dict_list(df):
-        data = []
-        for _, row in df.iterrows():
-            data.append({"text": row["text"], "label": 1 if row["is_injection"] else 0})
-        return data
-
-    train_data = df_to_dict_list(train_df)
-    val_data = df_to_dict_list(val_df)
-    test_data = df_to_dict_list(test_df)
-
-    return train_data, val_data, test_data
 
 
 def train_model(
