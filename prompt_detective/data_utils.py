@@ -125,12 +125,13 @@ def ensure_data_files(dest_dir: Optional[Path] = None) -> Tuple[Path, Path, Path
     return tuple(dest_paths)
 
 
-def ensure_model_file(dest_dir: Optional[Path] = None) -> Path:
+def ensure_model_file(dest_dir: Optional[Path] = None, model_type: str = "cnn") -> Path:
     """
     Ensure model file is available locally.
 
     Args:
         dest_dir: Destination directory (default: current directory/models)
+        model_type: Type of model ("cnn", "lstm", "transformer")
 
     Returns:
         Path to model file
@@ -139,7 +140,18 @@ def ensure_model_file(dest_dir: Optional[Path] = None) -> Path:
         dest_dir = Path.cwd() / "models"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = dest_dir / "best_model.pt"
+
+    # Determine filename based on model type
+    if model_type == "cnn":
+        filename = "best_model.pt"
+    elif model_type == "lstm":
+        filename = "lstm_best.pt"
+    elif model_type == "transformer":
+        filename = "transformer_best.pt"
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    dest_path = dest_dir / filename
 
     # Check if model already exists
     if dest_path.exists():
@@ -148,16 +160,16 @@ def ensure_model_file(dest_dir: Optional[Path] = None) -> Path:
     # Try to copy from package
     package_models_dir = get_package_models_dir()
     if package_models_dir:
-        source_path = package_models_dir / "best_model.pt"
+        source_path = package_models_dir / filename
         if source_path.exists():
             shutil.copy2(source_path, dest_path)
-            print(f"Copied model to {dest_path}")
+            print(f"Copied {model_type} model to {dest_path}")
             return dest_path
 
     # Model not available
     warnings.warn(
-        "Pre-trained model not found in package. "
-        "You may need to train a model first with 'prompt-detective train'.",
+        f"Pre-trained {model_type} model not found in package. "
+        f"You may need to train a model first with 'prompt-detective train --model-type {model_type}'.",
         RuntimeWarning,
         stacklevel=2,
     )

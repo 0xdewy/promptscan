@@ -16,7 +16,6 @@ prompts.json filter=lfs diff=lfs merge=lfs -text
 *.yaml text
 *.ini text
 *.cfg text
-
 # Binary files
 *.png binary
 *.jpg binary

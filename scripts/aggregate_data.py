@@ -8,14 +8,14 @@ Sources:
 4. data/processed/*.csv (processed CSV files)
 """
 
+import hashlib
 import json
 import sqlite3
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from typing import List, Dict, Any
-import hashlib
 import warnings
+from pathlib import Path
+from typing import Dict
+
+import pandas as pd
 
 warnings.filterwarnings("ignore")
 
@@ -159,7 +159,7 @@ def deduplicate_data(df: pd.DataFrame) -> pd.DataFrame:
         print(f"  After deduplication: {len(unique_df)} unique records")
         return unique_df.drop(columns=["text_hash"])
     else:
-        print(f"  No duplicates found")
+        print("  No duplicates found")
         return df.drop(columns=["text_hash"])
 
 
@@ -285,7 +285,7 @@ def main():
     combined_df = deduplicate_data(combined_df)
 
     # Analyze sources
-    print(f"\nData sources analysis:")
+    print("\nData sources analysis:")
     source_counts = combined_df["source"].value_counts()
     for source, count in source_counts.items():
         injection_rate = combined_df[combined_df["source"] == source][
@@ -294,7 +294,7 @@ def main():
         print(f"  {source}: {count} records ({injection_rate:.2%} injections)")
 
     # Overall statistics
-    print(f"\nOverall statistics:")
+    print("\nOverall statistics:")
     print(f"  Total unique records: {len(combined_df)}")
     print(f"  Injection rate: {combined_df['is_injection'].mean():.2%}")
     print(f"  Safe prompts: {(combined_df['is_injection'] == False).sum()}")
@@ -304,7 +304,7 @@ def main():
     splits = split_data(combined_df)
 
     # Save splits
-    print(f"\nSaving data splits...")
+    print("\nSaving data splits...")
     save_to_parquet(splits["train"], data_dir / "train.parquet")
     save_to_parquet(splits["val"], data_dir / "val.parquet")
     save_to_parquet(splits["test"], data_dir / "test.parquet")
@@ -313,7 +313,7 @@ def main():
     save_to_parquet(combined_df, data_dir / "prompts_full.parquet")
 
     # Create backup of original files before removal
-    print(f"\nCreating backups of original files...")
+    print("\nCreating backups of original files...")
     backup_dir = data_dir / "backup_original"
     backup_dir.mkdir(exist_ok=True)
 
@@ -336,10 +336,10 @@ def main():
                 shutil.copy2(src, dst)
             print(f"  Backed up: {src.name}")
 
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("Aggregation complete!")
     print("=" * 60)
-    print(f"\nGenerated files:")
+    print("\nGenerated files:")
     print(f"  train.parquet: {len(splits['train'])} records")
     print(f"  val.parquet: {len(splits['val'])} records")
     print(f"  test.parquet: {len(splits['test'])} records")

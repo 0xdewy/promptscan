@@ -78,18 +78,67 @@ prompt-detective --version
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/prompt-detective.git
+git clone https://github.com/0xdewy/prompt-detective.git
 cd prompt-detective
 
 # Install in development mode with uv
 uv pip install -e .
 
-# Or install with development dependencies
-uv pip install -e ".[dev]"
+# Verify installation
+prompt-detective --version
+```
 
-# Alternative: Install with pip
-pip install -e .
-pip install -e ".[dev]"
+#### Running from Source
+
+After installing from source, you have several options to run the tool:
+
+**Option 1: Activate virtual environment manually**
+```bash
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Run commands
+prompt-detective --version
+prompt-detective predict "Hello world"
+
+# Deactivate when done
+deactivate
+```
+
+**Option 2: Use uv run (recommended)**
+```bash
+# Run directly with uv
+uv run prompt-detective --version
+uv run prompt-detective predict "Hello world"
+```
+
+**Option 3: Use the wrapper script**
+```bash
+# Make the script executable (first time only)
+chmod +x run.sh
+
+# Run using the wrapper
+./run.sh --version
+./run.sh predict "Hello world"
+```
+
+**Option 4: Use Makefile commands**
+```bash
+# Show available commands
+make help
+
+# Run tests
+make test
+
+# Train model
+make train
+
+# Run prediction
+make predict
+
+# Run any command
+make run -- predict "Hello world"
+make run -- --version
 ```
 
 ### Dependencies
@@ -101,6 +150,10 @@ The package requires:
 - numpy 1.24.0 or higher
 - requests 2.31.0 or higher
 
+**For transformer models (optional):**
+- transformers >= 4.30.0
+- tokenizers >= 0.13.0
+
 PyTorch can be installed with CPU-only support for smaller installations:
 ```bash
 # CPU-only PyTorch (recommended for most users)
@@ -108,6 +161,9 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 # Or with GPU support (if you have CUDA)
 pip install torch torchvision torchaudio
+
+# Install transformer dependencies (optional, for ensemble mode)
+pip install transformers tokenizers
 ```
 
 ### Data Aggregation
@@ -128,16 +184,58 @@ After installation, you can use the `prompt-detective` command:
 prompt-detective --version
 prompt-detective --help
 
-# Analyze text for prompt injection
+# Analyze text for prompt injection (default: CNN model)
 prompt-detective predict "Ignore all previous instructions"
 prompt-detective predict --file tests/fixtures/test_injection.txt
 
-# Train a new model
+# Use different model types
+prompt-detective predict --model-type lstm "Ignore all previous instructions"
+prompt-detective predict --model-type transformer "Ignore all previous instructions"
+
+# Use ensemble mode (requires multiple trained models)
+prompt-detective predict --model-type ensemble "Ignore all previous instructions"
+
+# Train a new model (default: CNN)
 prompt-detective train
+
+# Train specific model types
+prompt-detective train --model-type lstm
+prompt-detective train --model-type transformer
 
 # Export data to various formats
 prompt-detective export --format json --output prompts.json
 prompt-detective export --format stats
+```
+
+### Ensemble Detection System
+
+Safe Prompts now includes an ensemble detection system that combines multiple models for improved accuracy:
+
+**Available Models:**
+- **CNN**: Fast, good at local pattern detection (default)
+- **LSTM**: Better at sequential pattern recognition
+- **Transformer (DistilBERT)**: State-of-the-art, best overall accuracy
+
+**Voting Strategies:**
+- `majority`: Each model gets one vote
+- `weighted`: Models weighted by confidence or custom weights
+- `confidence`: Select prediction with highest confidence
+- `soft`: Average probability distributions
+
+**Example Ensemble Usage:**
+```bash
+# Train all models first
+prompt-detective train --model-type cnn
+prompt-detective train --model-type lstm
+prompt-detective train --model-type transformer
+
+# Use ensemble with different voting strategies
+prompt-detective predict --model-type ensemble "Test text"
+prompt-detective predict --model-type ensemble --voting-strategy weighted "Test text"
+prompt-detective predict --model-type ensemble --voting-strategy confidence "Test text"
+
+# Use specific model directory
+prompt-detective predict --model-type ensemble --model-dir ./my_models "Test text"
 ```
 
 ### Development Setup
@@ -427,6 +525,7 @@ Top injection candidates:
 
 ## Model Details
 
+### CNN Model (Default)
 - **Vocabulary size**: 3,534 words
 - **Max sequence length**: 100 tokens
 - **Embedding dimension**: 64
@@ -434,6 +533,30 @@ Top injection candidates:
 - **Training epochs**: 20
 - **Batch size**: 32
 - **Learning rate**: 0.001
+
+### LSTM Model
+- **Vocabulary size**: 3,534 words
+- **Max sequence length**: 100 tokens
+- **Embedding dimension**: 128
+- **Hidden dimension**: 128
+- **LSTM layers**: 2 (bidirectional)
+- **Training epochs**: 20
+- **Batch size**: 32
+- **Learning rate**: 0.001
+
+### Transformer Model (DistilBERT)
+- **Model**: distilbert-base-uncased
+- **Max sequence length**: 128 tokens
+- **Parameters**: 67 million
+- **Training epochs**: 3 (fine-tuning)
+- **Batch size**: 16
+- **Learning rate**: 2e-5
+
+### Ensemble System
+- **Parallel inference**: All models run concurrently
+- **Voting strategies**: Majority, weighted, confidence-based, soft voting
+- **Default weights**: CNN (0.25), LSTM (0.25), Transformer (0.50)
+- **Performance**: ~50ms inference time (CPU)
 
 ## Requirements
 
@@ -448,6 +571,114 @@ The virtual environment already has everything installed.
 ```bash
 pip install torch requests
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue 1: Command not found**
+```
+bash: command not found: prompt-detective
+```
+
+**Solution:** The command is only available inside the virtual environment. Use one of these methods:
+```bash
+# Method 1: Activate virtual environment
+source .venv/bin/activate
+prompt-detective --version
+
+# Method 2: Use uv run
+uv run prompt-detective --version
+
+# Method 3: Use the wrapper script
+./run.sh --version
+
+# Method 4: Use Makefile
+make run -- --version
+```
+
+**Issue 2: ModuleNotFoundError for transformers**
+```
+ModuleNotFoundError: No module named 'transformers'
+```
+
+**Solution:** Transformer dependencies are optional. Install them for transformer/ensemble mode:
+```bash
+# Install transformer dependencies
+uv pip install transformers tokenizers
+
+# Or reinstall with all dependencies
+uv pip install -e .
+```
+
+**Issue 3: Ensemble mode requires multiple models**
+```
+Error: No model checkpoints found in models/
+```
+
+**Solution:** Train individual models first:
+```bash
+# Train all model types
+prompt-detective train --model-type cnn
+prompt-detective train --model-type lstm
+prompt-detective train --model-type transformer
+
+# Then use ensemble
+prompt-detective predict --model-type ensemble "Test text"
+```
+
+**Issue 4: Model gives unexpected results**
+```
+Text: Hello, how are you?
+Result: INJECTION (60.31%)
+```
+
+**Solution:** The pre-trained model might need retraining:
+```bash
+# Train a fresh model
+make train
+
+# Or train specific model type
+prompt-detective train --model-type cnn
+```
+
+**Issue 5: Transformer training is slow**
+```
+Training transformer model...
+```
+
+**Solution:** Transformer training takes time. Options:
+```bash
+# Use fewer epochs for transformer
+prompt-detective train --model-type transformer --epochs 2
+
+# Use smaller batch size if memory limited
+prompt-detective train --model-type transformer --batch-size 8
+
+# Skip transformer and use CNN+LSTM ensemble
+prompt-detective predict --model-type ensemble --model-dir ./models --voting-strategy majority
+```
+
+**Issue 6: pytest not found**
+```
+bash: command not found: pytest
+```
+
+**Solution:** Install development dependencies:
+```bash
+uv pip install -e ".[dev]"
+```
+
+### Quick Reference
+
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `uv run prompt-detective` | Run any command | `uv run prompt-detective --version` |
+| `./run.sh` | Use wrapper script | `./run.sh predict "Hello"` |
+| `make run --` | Use Makefile | `make run -- predict "Hello"` |
+| `make test` | Run tests | `make test` |
+| `make train` | Train model | `make train` |
+| `make predict` | Test prediction | `make predict` |
 
 ## Data Generation
 
