@@ -23,9 +23,13 @@ class PromptDataset(Dataset):
         text = item["text"]
         label = item["label"]
 
-        token_ids = self.processor.encode(text)
+        # Processor.encode() returns a dict with "input_ids" key
+        encoded = self.processor.encode(text)
+
+        # Extract the tensor from the dict and squeeze batch dimension
+        input_ids = encoded["input_ids"].squeeze(0)
 
         return {
-            "input_ids": torch.tensor(token_ids, dtype=torch.long),
+            "input_ids": input_ids,
             "label": torch.tensor(label, dtype=torch.long),
         }

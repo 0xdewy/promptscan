@@ -2,7 +2,6 @@
 Configuration settings for safe prompts project.
 """
 
-import os
 from pathlib import Path
 
 # Base directory
@@ -42,7 +41,7 @@ NUM_FILTERS = 50
 NUM_CLASSES = 2
 
 # Training parameters
-BATCH_SIZE = 32
+BATCH_SIZE = 16  # Reduced from 32 to prevent OOM errors
 LEARNING_RATE = 1e-3
 NUM_EPOCHS = 20
 PATIENCE = 3

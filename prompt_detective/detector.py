@@ -16,38 +16,33 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+from .data_utils import get_default_data_paths
 from .models.cnn_model import SimpleCNN
+from .processors.word_processor import WordProcessor
 from .utils.data_loader import PromptDataset
-
-# Import from refactored modules
-from .utils.text_processor import SimpleTextProcessor
-
-# Import configuration
-try:
-    from ..config import settings
-except ImportError:
-    # Fallback paths if config module is not available
-    class Settings:
-        TRAIN_PARQUET_PATH = "data/train.parquet"
-        VAL_PARQUET_PATH = "data/val.parquet"
-        TEST_PARQUET_PATH = "data/test.parquet"
-        MODEL_PATH = "models/best_model.pt"
-
-    settings = Settings()
+from .utils.device import get_device
 
 
 class SimpleTrainer:
     """Minimal trainer for the model."""
 
-    def __init__(self, model, train_loader, val_loader, processor, device="cpu"):
-        self.model = model.to(device)
+    def __init__(
+        self,
+        model,
+        train_loader,
+        val_loader,
+        processor,
+        device="cpu",
+        learning_rate=1e-3,
+    ):
+        self.device = get_device(device)
+        self.model = model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.processor = processor
-        self.device = device
 
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+        self.optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
 
     def train_epoch(self):
         """Train for one epoch."""
@@ -61,7 +56,7 @@ class SimpleTrainer:
             labels = batch["label"].to(self.device)
 
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+            outputs = self.model({"input_ids": inputs})
             loss = self.criterion(outputs, labels)
             loss.backward()
             self.optimizer.step()
@@ -85,7 +80,7 @@ class SimpleTrainer:
                 inputs = batch["input_ids"].to(self.device)
                 labels = batch["label"].to(self.device)
 
-                outputs = self.model(inputs)
+                outputs = self.model({"input_ids": inputs})
                 loss = self.criterion(outputs, labels)
 
                 total_loss += loss.item()
@@ -135,7 +130,7 @@ class SimplePromptDetector:
     """Main class for prompt injection detection."""
 
     def __init__(self, model_path="models/best_model.pt", device="cpu"):
-        self.device = device
+        self.device = get_device(device)
         self.load_model(model_path)
 
     def load_model(self, model_path):
@@ -169,10 +164,11 @@ class SimplePromptDetector:
             vocab_size = checkpoint.get("vocab_size", len(self.processor.vocab))
         elif "vocab" in checkpoint:
             # New format: vocab dictionary is saved (safer, PyTorch 2.6+ compatible)
-            from .utils.text_processor import SimpleTextProcessor
+            from .processors.word_processor import WordProcessor
 
-            self.processor = SimpleTextProcessor(
-                max_length=checkpoint.get("max_length", 100)
+            self.processor = WordProcessor(
+                max_length=checkpoint.get("max_length", 100),
+                min_freq=checkpoint.get("min_freq", 2),
             )
             self.processor.vocab = checkpoint["vocab"]
             # Create inverse vocab mapping
@@ -191,8 +187,8 @@ class SimplePromptDetector:
 
     def predict(self, text: str) -> Dict[str, Any]:
         """Predict if text contains prompt injection."""
-        token_ids = self.processor.encode(text)
-        input_tensor = torch.tensor([token_ids], dtype=torch.long).to(self.device)
+        encoded = self.processor.encode(text)
+        input_tensor = encoded["input_ids"].to(self.device)
 
         with torch.no_grad():
             outputs = self.model(input_tensor)
@@ -245,8 +241,26 @@ def train_model(
     val_path="data/val.parquet",
     test_path="data/test.parquet",
     model_path="models/best_model.pt",
+    epochs=20,
+    batch_size=32,
+    learning_rate=1e-3,
+    device="cpu",
 ):
     """Train the model from parquet files."""
+    # Convert device string to actual device
+    device = get_device(device)
+
+    # Setup memory-safe training
+    try:
+        from ..utils.memory_monitor import setup_memory_safe_training
+
+        batch_size, memory_monitor = setup_memory_safe_training(
+            batch_size, max_memory_mb=8000
+        )
+    except ImportError:
+        print("WARNING: Memory monitor not available, using default batch size")
+        memory_monitor = None
+
     print("Loading data from parquet files...")
     train_data, val_data, test_data = load_data_from_parquet(
         train_path, val_path, test_path
@@ -257,9 +271,9 @@ def train_model(
     print(f"Test data: {len(test_data)} samples")
 
     # Build processor
-    processor = SimpleTextProcessor(max_length=100)
+    processor = WordProcessor(max_length=100, min_freq=2)
     train_texts = [item["text"] for item in train_data]
-    processor.build_vocab(train_texts, min_freq=2)
+    processor.build_vocab(train_texts)
 
     print(f"Vocabulary size: {len(processor.vocab)}")
 
@@ -267,17 +281,33 @@ def train_model(
     train_dataset = PromptDataset(train_data, processor)
     val_dataset = PromptDataset(val_data, processor)
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Create model
     model = SimpleCNN(vocab_size=len(processor.vocab))
 
     # Train
-    trainer = SimpleTrainer(model, train_loader, val_loader, processor, device="cpu")
-    trainer.train(epochs=20)
+    trainer = SimpleTrainer(
+        model,
+        train_loader,
+        val_loader,
+        processor,
+        device=device,
+        learning_rate=learning_rate,
+    )
+    trainer.train(epochs=epochs)
+
+    # Save model
+    model.save(
+        model_path,
+        processor,
+        train_acc=trainer.train_epoch()[1],
+        val_acc=trainer.validate()[1],
+    )
 
     print(f"Model saved to {model_path}")
+    print(f"Vocabulary size: {len(processor.vocab)}")
 
 
 def legacy_main():
@@ -304,10 +334,11 @@ def legacy_main():
     args = parser.parse_args()
 
     if args.train:
+        train_path, val_path, test_path = get_default_data_paths()
         train_model(
-            train_path=settings.TRAIN_PARQUET_PATH,
-            val_path=settings.VAL_PARQUET_PATH,
-            test_path=settings.TEST_PARQUET_PATH,
+            train_path=str(train_path),
+            val_path=str(val_path),
+            test_path=str(test_path),
             model_path=args.model,
         )
         return

@@ -3,6 +3,22 @@
 Command-line interface for Safe Prompts.
 """
 
+import os
+
+# Set environment variables to suppress warnings BEFORE any imports
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+
+import warnings
+import logging
+
+# Suppress ALL warnings BEFORE any imports
+warnings.filterwarnings("ignore")
+
+# Also suppress logging warnings
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 import argparse
 import sys
 from pathlib import Path
@@ -10,41 +26,81 @@ from pathlib import Path
 from . import __version__
 from .data_utils import (
     ensure_data_files,
-    ensure_model_file,
 )
-from .detector import SimplePromptDetector, train_model
+from .unified_detector import UnifiedDetector
+
+
+def _display_prediction(result, model_type, detector=None, source=None):
+    """Display prediction result with individual model predictions for ensemble."""
+    if source:
+        print(f"{source}:")
+
+    if model_type == "ensemble" and "individual_predictions" in result:
+        print("Individual model predictions:")
+        # Get model types from detector if available
+        model_types = []
+        if (
+            detector
+            and hasattr(detector, "detector")
+            and hasattr(detector.detector, "model_types")
+        ):
+            model_types = detector.detector.model_types
+
+        for pred in result["individual_predictions"]:
+            idx = pred.get("model_idx", 0)
+            model_type_display = (
+                model_types[idx] if idx < len(model_types) else f"Model {idx}"
+            )
+            print(
+                f"  - {model_type_display}: {pred['prediction']} ({pred['confidence']:.2%})"
+            )
+        print(f"\nEnsemble result: {result['prediction']} ({result['confidence']:.2%})")
+    else:
+        print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
 
 
 def predict_command(args):
     """Handle predict command."""
-    # Ensure model file is available
-    if args.model:
-        model_path = Path(args.model)
-    else:
-        print("Checking for pre-trained model...")
-        model_path = ensure_model_file()
-
-    print(f"Using model: {model_path}")
+    print(f"Loading {args.model_type} detector...")
 
     try:
-        detector = SimplePromptDetector(model_path=str(model_path))
-    except FileNotFoundError:
-        print(f"\nError: Model file '{model_path}' not found.")
-        print("\nYou can:")
-        print("  1. Train a model: prompt-detective train")
-        print(
-            "  2. Specify a different model: prompt-detective predict"
-            " --model /path/to/model.pt"
+        detector = UnifiedDetector(
+            model_type=args.model_type,
+            model_path=args.model,
+            device=args.device,
+            voting_strategy=args.voting_strategy,
+            model_dir=args.model_dir,
         )
-        print("  3. Check if the package includes a pre-trained model")
+    except FileNotFoundError as e:
+        print(f"\nError: {e}")
+        print("\nYou can:")
+        if args.model_type == "ensemble":
+            print("  1. Train individual models first")
+            print("  2. Use a single model: --model-type cnn|lstm|transformer")
+        else:
+            print(
+                f"  1. Train a {args.model_type} model: prompt-detective train --model-type {args.model_type}"
+            )
+            print("  2. Specify a different model path with --model")
         sys.exit(1)
+
+    # Show detector info
+    info = detector.get_info()
+    if args.model_type == "ensemble":
+        print(f"Loaded ensemble with {len(info['models'])} models")
+        print(f"Voting strategy: {info['voting_strategy']}")
+        for model_info in info["models"]:
+            print(f"  - {model_info['type']}: {model_info['parameters']:,} params")
+    else:
+        print(f"Loaded {info['type']} model with {info['parameters']:,} parameters")
 
     if args.file:
         with open(args.file, "r") as f:
             text = f.read().strip()
         result = detector.predict(text)
-        print(f"File: {args.file}")
-        print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
+        _display_prediction(
+            result, args.model_type, detector, source=f"File: {args.file}"
+        )
 
     elif args.dir:
         from .detector import analyze_directory
@@ -59,15 +115,17 @@ def predict_command(args):
             response.raise_for_status()
             text = response.text.strip()
             result = detector.predict(text)
-            print(f"URL: {args.url}")
-            print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
+            _display_prediction(
+                result, args.model_type, detector, source=f"URL: {args.url}"
+            )
         except Exception as e:
             print(f"Error fetching URL: {e}")
 
     elif args.text:
         result = detector.predict(args.text)
-        print(f"Text: {args.text}")
-        print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
+        _display_prediction(
+            result, args.model_type, detector, source=f"Text: {args.text}"
+        )
 
     else:
         # Interactive mode
@@ -79,7 +137,7 @@ def predict_command(args):
                 if not text:
                     continue
                 result = detector.predict(text)
-                print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
+                _display_prediction(result, args.model_type, detector)
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             sys.exit(0)
@@ -87,43 +145,77 @@ def predict_command(args):
 
 def train_command(args):
     """Handle train command."""
+
     # Ensure data files are available
-    print("Checking for data files...")
+
     train_path, val_path, test_path = ensure_data_files()
 
-    print("\nTraining model with:")
+    # Set default model path if not provided
+    if args.model is None:
+        if args.model_type == "cnn":
+            args.model = "models/best_model.pt"
+        elif args.model_type == "lstm":
+            args.model = "models/lstm_best.pt"
+        elif args.model_type == "transformer":
+            args.model = "models/transformer_best.pt"
+
+    print(f"\nTraining {args.model_type} model with:")
     print(f"  Training data: {train_path}")
     print(f"  Validation data: {val_path}")
     print(f"  Test data: {test_path}")
-
-    # Check if data files exist
-    missing_files = []
-    for path, name in [(train_path, "train"), (val_path, "val"), (test_path, "test")]:
-        if not path.exists():
-            missing_files.append(f"{name}: {path}")
-
-    if missing_files:
-        print("\nError: Missing data files:")
-        for missing in missing_files:
-            print(f"  - {missing}")
-        print("\nYou may need to:")
-        print("  1. Run the migration script: python scripts/migrate_to_parquet.py")
-        print("  2. Or ensure data files are in the package")
-        sys.exit(1)
-
-    train_model(
-        train_path=str(train_path),
-        val_path=str(val_path),
-        test_path=str(test_path),
-        model_path=args.model,
+    print(f"  Model will be saved to: {args.model}")
+    print(
+        f"  Training parameters: {args.epochs} epochs, batch size {args.batch_size}, lr {args.learning_rate}"
     )
+
+    # Use unified training pipeline
+    from .config import DataConfig, ModelConfig
+    from .training.pipeline import train_model
+
+    # Create configurations
+    data_config = DataConfig(
+        train_path=train_path,
+        val_path=val_path,
+        test_path=test_path,
+        model_dir=Path(args.model).parent,
+    )
+
+    model_config = ModelConfig(
+        model_type=args.model_type,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        device=args.device,
+    )
+
+    # Set model-specific defaults
+    if args.model_type == "transformer":
+        model_config.learning_rate = 2e-5  # Standard for fine-tuning
+        model_config.max_length = 128
+    elif args.model_type == "lstm":
+        model_config.hidden_dim = 128
+        model_config.num_layers = 2
+        model_config.dropout = 0.3
+    elif args.model_type == "cnn":
+        model_config.embedding_dim = 64
+        model_config.num_filters = 50
+
+    # Train model using unified pipeline
+    model, processor, results = train_model(
+        model_type=args.model_type,
+        data_config=data_config,
+        model_config=model_config,
+        output_dir=Path(args.model).parent,
+    )
+
+    print("\nTraining completed successfully!")
+    print(f"Best validation accuracy: {results['best_val_accuracy']:.2%}")
 
 
 def export_command(args):
     """Handle export command."""
     import csv
     import json
-    from pathlib import Path
 
     import pandas as pd
 
@@ -249,16 +341,64 @@ Examples:
         "--summary", action="store_true", help="Show summary for directory analysis"
     )
     predict_parser.add_argument(
-        "--model", help="Path to model checkpoint (default: models/best_model.pt)"
+        "--model", help="Path to model checkpoint (default depends on model type)"
+    )
+    predict_parser.add_argument(
+        "--model-type",
+        choices=["cnn", "lstm", "transformer", "ensemble"],
+        default="ensemble",
+        help="Model type to use (default: ensemble)",
+    )
+    predict_parser.add_argument(
+        "--model-dir",
+        default="models",
+        help="Directory containing model checkpoints (for ensemble)",
+    )
+    predict_parser.add_argument(
+        "--voting-strategy",
+        choices=["majority", "weighted", "confidence", "soft"],
+        default="majority",
+        help="Voting strategy for ensemble (default: majority)",
+    )
+    predict_parser.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "auto"],
+        default="auto",
+        help="Device to run inference on (auto, cpu, or cuda)",
     )
     predict_parser.set_defaults(func=predict_command)
 
     # Train command
     train_parser = subparsers.add_parser("train", help="Train the model")
     train_parser.add_argument(
-        "--model",
-        default="models/best_model.pt",
-        help="Path to save model checkpoint (default: models/best_model.pt)",
+        "--model-type",
+        choices=["cnn", "lstm", "transformer"],
+        default="cnn",
+        help="Model type to train (default: cnn)",
+    )
+    train_parser.add_argument(
+        "--model", help="Path to save model checkpoint (default depends on model type)"
+    )
+    train_parser.add_argument(
+        "--epochs", type=int, default=20, help="Number of training epochs (default: 20)"
+    )
+    train_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=16,
+        help="Batch size for training (default: 16, reduced for memory safety)",
+    )
+    train_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=1e-3,
+        help="Learning rate (default: 0.001)",
+    )
+    train_parser.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "auto"],
+        default="auto",
+        help="Device to train on (auto for GPU detection, cpu, or cuda)",
     )
     train_parser.set_defaults(func=train_command)
 
