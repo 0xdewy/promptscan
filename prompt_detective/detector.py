@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+from . import get_model_path
 from .data_utils import get_default_data_paths
 from .models.cnn_model import SimpleCNN
 from .processors.word_processor import WordProcessor
@@ -117,7 +118,7 @@ class SimpleTrainer:
                         "val_acc": val_acc,
                         "epoch": epoch + 1,
                     },
-                    "models/best_model.pt",
+                    str(get_model_path("best_model.pt")),
                 )
                 print(f"  ✓ Saved best model (val_acc: {val_acc:.4f})")
             else:
@@ -130,8 +131,10 @@ class SimpleTrainer:
 class SimplePromptDetector:
     """Main class for prompt injection detection."""
 
-    def __init__(self, model_path="models/best_model.pt", device="cpu"):
+    def __init__(self, model_path=None, device="cpu"):
         self.device = get_device(device)
+        if model_path is None:
+            model_path = str(get_model_path("best_model.pt"))
         self.load_model(model_path)
 
     def load_model(self, model_path):
@@ -216,7 +219,7 @@ def train_model(
     train_path="data/train.parquet",
     val_path="data/val.parquet",
     test_path="data/test.parquet",
-    model_path="models/best_model.pt",
+    model_path=None,
     epochs=20,
     batch_size=32,
     learning_rate=1e-3,
@@ -275,6 +278,8 @@ def train_model(
     trainer.train(epochs=epochs)
 
     # Save model
+    if model_path is None:
+        model_path = str(get_model_path("best_model.pt"))
     model.save(
         model_path,
         processor,
@@ -304,7 +309,9 @@ def legacy_main():
         "--summary", action="store_true", help="Show summary for directory analysis"
     )
     parser.add_argument(
-        "--model", default="models/best_model.pt", help="Path to model checkpoint"
+        "--model",
+        default=None,
+        help="Path to model checkpoint (default: package model)",
     )
 
     args = parser.parse_args()

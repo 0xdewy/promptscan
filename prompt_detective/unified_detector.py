@@ -6,6 +6,7 @@ Unified detector interface for all model types.
 import os
 from typing import Any, Dict, List
 
+from . import get_model_path
 from .ensemble.detector import EnsembleDetector
 from .models.cnn_model import SimpleCNN
 from .models.lstm_model import LSTMModel
@@ -31,8 +32,13 @@ class UnifiedDetector:
         self.device = get_device(device)  # Convert "auto" to "cpu" or "cuda"
 
         if model_type == "ensemble":
+            model_dir = kwargs.get("model_dir", model_path)
+            if model_dir is None:
+                # Use package models directory
+                package_dir = os.path.dirname(os.path.dirname(__file__))
+                model_dir = os.path.join(package_dir, "models", "checkpoints")
             self.detector = EnsembleDetector.from_pretrained(
-                model_dir=kwargs.get("model_dir", model_path or "models"),
+                model_dir=model_dir,
                 voting_strategy=kwargs.get("voting_strategy", "majority"),
                 device=self.device,
             )
@@ -40,11 +46,11 @@ class UnifiedDetector:
             if model_path is None:
                 # Default model paths
                 if model_type == "cnn":
-                    model_path = "models/best_model.pt"
+                    model_path = str(get_model_path("cnn_best.pt"))
                 elif model_type == "lstm":
-                    model_path = "models/lstm_best.pt"
+                    model_path = str(get_model_path("lstm_best.pt"))
                 elif model_type == "transformer":
-                    model_path = "models/transformer_best.pt"
+                    model_path = str(get_model_path("transformer_best.pt"))
 
             if not os.path.exists(model_path):
                 raise FileNotFoundError(f"Model file not found: {model_path}")

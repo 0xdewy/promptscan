@@ -23,7 +23,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, get_model_path
 from .data_utils import (
     ensure_data_files,
 )
@@ -153,11 +153,11 @@ def train_command(args):
     # Set default model path if not provided
     if args.model is None:
         if args.model_type == "cnn":
-            args.model = "models/best_model.pt"
+            args.model = str(get_model_path("cnn_best.pt"))
         elif args.model_type == "lstm":
-            args.model = "models/lstm_best.pt"
+            args.model = str(get_model_path("lstm_best.pt"))
         elif args.model_type == "transformer":
-            args.model = "models/transformer_best.pt"
+            args.model = str(get_model_path("transformer_best.pt"))
 
     print(f"\nTraining {args.model_type} model with:")
     print(f"  Training data: {train_path}")
@@ -351,8 +351,8 @@ Examples:
     )
     predict_parser.add_argument(
         "--model-dir",
-        default="models",
-        help="Directory containing model checkpoints (for ensemble)",
+        default=None,
+        help="Directory containing model checkpoints (for ensemble, default: package models)",
     )
     predict_parser.add_argument(
         "--voting-strategy",

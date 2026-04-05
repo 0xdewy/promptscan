@@ -48,10 +48,11 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["prompt_detective", "prompt_detective.models", "prompt_detective.utils"]
+packages = ["prompt_detective", "prompt_detective.models", "prompt_detective.utils", "prompt_detective.ensemble", "prompt_detective.processors", "prompt_detective.training", "prompt_detective.training.strategies"]
 include-package-data = true
 
 [tool.setuptools.package-data]
+"prompt_detective.models" = ["checkpoints/*.pt"]
 "*" = ["*.pt", "*.parquet", "*.csv", "*.db", "*.yaml", "*.txt"]
 
 [project.optional-dependencies]

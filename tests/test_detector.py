@@ -98,12 +98,14 @@ def test_parquet_store():
 def test_detector_predict():
     """Test detector predictions."""
     # This test requires a trained model
-    model_path = os.path.join("..", "models", "best_model.pt")
+    from prompt_detective import get_model_path
+
+    model_path = get_model_path("best_model.pt")
 
     if not os.path.exists(model_path):
         pytest.skip("Model file not found, skipping prediction tests")
 
-    detector = SimplePromptDetector(model_path=model_path)
+    detector = SimplePromptDetector(model_path=str(model_path))
 
     # Test with safe prompt
     result = detector.predict("What is the capital of France?")

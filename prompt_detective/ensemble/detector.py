@@ -122,7 +122,7 @@ class EnsembleDetector:
     @classmethod
     def from_pretrained(
         cls,
-        model_dir: str = "models",
+        model_dir: str = None,
         voting_strategy: str = "majority",
         device: str = "cpu",
     ) -> "EnsembleDetector":
@@ -134,6 +134,13 @@ class EnsembleDetector:
             - lstm_best.pt
             - transformer_best.pt
         """
+        if model_dir is None:
+            # Use package models directory
+            import os
+
+            package_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            model_dir = os.path.join(package_dir, "models", "checkpoints")
+
         model_dir = Path(model_dir)
         model_configs = []
 
