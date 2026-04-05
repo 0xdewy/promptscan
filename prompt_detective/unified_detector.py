@@ -34,9 +34,9 @@ class UnifiedDetector:
         if model_type == "ensemble":
             model_dir = kwargs.get("model_dir", model_path)
             if model_dir is None:
-                # Use package models directory
-                package_dir = os.path.dirname(os.path.dirname(__file__))
-                model_dir = os.path.join(package_dir, "models", "checkpoints")
+                # Use package models directory - get it from get_model_path
+                cnn_path = get_model_path("cnn_best.pt")
+                model_dir = os.path.dirname(str(cnn_path))
             self.detector = EnsembleDetector.from_pretrained(
                 model_dir=model_dir,
                 voting_strategy=kwargs.get("voting_strategy", "majority"),
