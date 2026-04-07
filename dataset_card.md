@@ -41,6 +41,11 @@ dataset_info:
       path: val.parquet
     - split: test
       path: test.parquet
+  - config_name: dynamic
+    data_files:
+    - split: full
+      path: prompts.parquet
+    note: Modern training uses prompts.parquet with dynamic splits (80% train, 10% validation, 10% test)
 tags:
 - prompt-injection
 - ai-safety
@@ -56,12 +61,18 @@ A comprehensive dataset of 17,195 text prompts labeled for prompt injection dete
 
 ### Dataset Summary
 
-- **Total Examples**: 17,195
+- **Total Examples**: 17,195 (base dataset)
 - **Safe Prompts**: 6,362 (37.0%)
 - **Injection Examples**: 10,833 (63.0%)
 - **Average Text Length**: ~500 characters
 - **Languages**: English, Spanish
 - **Data Splits**: Train (13,756), Validation (1,719), Test (1,720)
+
+### Enhanced Dataset Features
+The dataset can be enhanced through batch import features:
+- **GitHub Integration**: Import safe documentation from repositories to reduce false positives
+- **Dynamic Splits**: Training automatically creates fresh splits from `data/prompts.parquet`
+- **False Positive Reduction**: Importing technical documentation addresses 86.4% false positive rate on README.md files and 93.8% on model_card.md files
 
 ### Supported Tasks
 
@@ -142,6 +153,8 @@ The dataset has the following characteristics:
 - **Language bias**: Primarily English with some Spanish examples
 - **Source bias**: Mix of synthetic, generated, and real-world examples
 - **Style patterns**: Injection examples include various attack patterns (direct overrides, role-playing, encoded instructions)
+- **Documentation bias**: Technical documentation may be incorrectly flagged as injections (addressed through batch import features)
+- **Import capabilities**: Can be enhanced with safe documentation from GitHub repositories to improve balance
 
 ### Other Known Limitations
 

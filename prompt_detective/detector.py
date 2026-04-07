@@ -129,9 +129,20 @@ class SimpleTrainer:
 
 
 class SimplePromptDetector:
-    """Main class for prompt injection detection."""
+    """Main class for prompt injection detection.
+
+    DEPRECATED: Use UnifiedDetector instead for ensemble models and better API.
+    This class is kept for backward compatibility only.
+    """
 
     def __init__(self, model_path=None, device="cpu"):
+        import warnings
+
+        warnings.warn(
+            "SimplePromptDetector is deprecated. Use UnifiedDetector instead for ensemble models and better API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.device = get_device(device)
         if model_path is None:
             model_path = str(get_model_path("best_model.pt"))
@@ -225,7 +236,19 @@ def train_model(
     learning_rate=1e-3,
     device="cpu",
 ):
-    """Train the model from parquet files."""
+    """Train the model from parquet files.
+
+    DEPRECATED: Use `prompt-detective train` command instead which uses
+    prompts.parquet with dynamic splits.
+    """
+    import warnings
+
+    warnings.warn(
+        "train_model is deprecated. Use 'prompt-detective train' command instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     # Convert device string to actual device
     device = get_device(device)
 
@@ -317,13 +340,36 @@ def legacy_main():
     args = parser.parse_args()
 
     if args.train:
-        train_path, val_path, test_path = get_default_data_paths()
-        train_model(
-            train_path=str(train_path),
-            val_path=str(val_path),
-            test_path=str(test_path),
-            model_path=args.model,
+        print(
+            "⚠️  DEPRECATED: The --train option in SimplePromptDetector is deprecated."
         )
+        print("   Use 'prompt-detective train' command instead for modern training.")
+        print("   The modern training:")
+        print("   1. Uses prompts.parquet as the data source")
+        print("   2. Creates dynamic splits (80% train, 10% validation, 10% test)")
+        print("   3. Includes batch-imported data from GitHub/docs")
+        print("   4. Supports ensemble models (CNN, LSTM, Transformer)")
+        print()
+        print("   To train with the modern pipeline:")
+        print("   $ prompt-detective train --model-type ensemble")
+        print()
+
+        # Try to use the old training for backward compatibility
+        try:
+            train_path, val_path, test_path = get_default_data_paths()
+            train_model(
+                train_path=str(train_path),
+                val_path=str(val_path),
+                test_path=str(test_path),
+                model_path=args.model,
+            )
+        except FileNotFoundError as e:
+            print(f"❌ Error: {e}")
+            print(
+                "   Static split files (train.parquet, val.parquet, test.parquet) not found."
+            )
+            print("   These have been replaced by prompts.parquet with dynamic splits.")
+            print("   Run 'prompt-detective train' instead.")
         return
 
     # Initialize detector
@@ -343,7 +389,7 @@ def legacy_main():
         print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
 
     elif args.dir:
-        analyze_directory(detector, args.dir, args.summary)
+        analyze_directory(detector, args.dir, args.summary, verbose=False)
 
     elif args.url:
         import requests
@@ -367,49 +413,210 @@ def legacy_main():
         parser.print_help()
 
 
-def analyze_directory(detector, directory_path, show_summary=False):
-    """Analyze all .txt files in directory."""
+def analyze_directory(detector, directory_path, show_summary=False, verbose=False):
+    """Analyze all text files (.txt, .md, .markdown) in directory with beautiful output."""
     import glob
+    import time
+    from pathlib import Path
 
-    txt_files = glob.glob(os.path.join(directory_path, "*.txt"))
-    if not txt_files:
-        print(f"No .txt files found in {directory_path}")
+    # Try to import markdown parser
+    try:
+        from .utils.markdown_parser import read_and_parse_file, get_file_type_display
+
+        has_markdown_parser = True
+    except ImportError:
+        has_markdown_parser = False
+
+    # Start timing
+    start_time = time.time()
+
+    # Find all text files (.txt, .md, .markdown)
+    text_files = []
+    for ext in [".txt", ".md", ".markdown"]:
+        text_files.extend(glob.glob(os.path.join(directory_path, f"*{ext}")))
+
+    if not text_files:
+        print(f"📁 No text files (.txt, .md, .markdown) found in {directory_path}")
         return
 
+    # Sort files for consistent display
+    text_files.sort()
+
+    # Display directory overview
+    print(f"📁 Scanning directory: {directory_path}")
+    print(f"📄 Found {len(text_files)} text file{'s' if len(text_files) != 1 else ''}")
+    print()
+
+    if verbose:
+        print("Files to analyze:")
+        for i, file_path in enumerate(text_files, 1):
+            file_size = os.path.getsize(file_path)
+            size_str = f"{file_size:,} bytes"
+            if file_size > 1024:
+                size_str = f"{file_size / 1024:.1f} KB"
+
+            # Add file type indicator
+            if has_markdown_parser:
+                file_type = get_file_type_display(file_path)
+                file_display = f"{os.path.basename(file_path)} ({file_type})"
+            else:
+                file_display = os.path.basename(file_path)
+
+            print(f"  {i:3d}. {file_display:40} ({size_str})")
+        print()
+
+    print("Starting analysis...")
+    print("-" * 60)
+
     results = []
-    for file_path in txt_files:
-        with open(file_path, "r") as f:
-            text = f.read().strip()
+    for i, file_path in enumerate(text_files, 1):
+        # Read file (with markdown parsing if needed)
+        if has_markdown_parser:
+            text = read_and_parse_file(file_path, use_library=True)
+        else:
+            with open(file_path, "r") as f:
+                text = f.read().strip()
+
+        # Analyze
         result = detector.predict(text)
+
+        # Store results
+        file_size = os.path.getsize(file_path)
         results.append(
             {
                 "file": os.path.basename(file_path),
-                "text": text[:50] + "..." if len(text) > 50 else text,
+                "path": file_path,
+                "text": text,
+                "size": file_size,
                 "prediction": result["prediction"],
                 "confidence": result["confidence"],
+                "is_injection": result["prediction"] == "INJECTION",
             }
         )
 
-        print(f"{file_path}: {result['prediction']} ({result['confidence']:.2%})")
+        # Display progress
+        file_name = os.path.basename(file_path)
+        if len(file_name) > 25:
+            file_name = file_name[:22] + "..."
 
-    if show_summary:
-        print("\n=== SUMMARY ===")
-        total = len(results)
-        injections = sum(1 for r in results if r["prediction"] == "INJECTION")
-        safe = total - injections
+        # Get file type display
+        if has_markdown_parser:
+            file_type = get_file_type_display(file_name)
+            if file_type == "Markdown":
+                file_type_icon = "📝"
+            elif file_type == "Text":
+                file_type_icon = "📄"
+            else:
+                file_type_icon = "📎"
+            file_display = f"{file_type_icon} {file_name}"
+        else:
+            file_display = f"📄 {file_name}"
 
-        print(f"Total texts analyzed: {total}")
-        print(f"Injections detected: {injections} ({injections / total * 100:.1f}%)")
-        print(f"Safe texts: {safe} ({safe / total * 100:.1f}%)")
+        # Color and icon based on prediction
+        if result["prediction"] == "INJECTION":
+            icon = "🔴"
+            status = "INJECTION"
+        else:
+            icon = "🟢"
+            status = "SAFE"
 
-        if injections > 0:
-            print("\nTop injection candidates:")
-            injection_results = [r for r in results if r["prediction"] == "INJECTION"]
-            injection_results.sort(key=lambda x: x["confidence"], reverse=True)
+        # Progress indicator
+        progress = f"[{i}/{len(text_files)}]"
 
-            for i, r in enumerate(injection_results[:5], 1):
-                print(f"{i}. {r['text']}")
-                print(f"   Confidence: {r['confidence']:.1%}, Source: {r['file']}")
+        # File size indicator
+        size_str = f"{file_size:,}B"
+        if file_size > 1024:
+            size_str = f"{file_size / 1024:.1f}KB"
+
+        print(
+            f"{progress} {icon} {file_display:28} {status:10} ({result['confidence']:.1%}) {size_str:>8}"
+        )
+
+    # Calculate total time
+    total_time = time.time() - start_time
+
+    # Always show a summary
+    print()
+    print("=" * 60)
+    print("📊 ANALYSIS SUMMARY")
+    print("=" * 60)
+
+    total = len(results)
+    injections = sum(1 for r in results if r["is_injection"])
+    safe = total - injections
+
+    # Calculate total size
+    total_size = sum(r["size"] for r in results)
+    avg_size = total_size / total if total > 0 else 0
+
+    # Format sizes
+    total_size_str = f"{total_size:,} bytes"
+    if total_size > 1024:
+        total_size_str = f"{total_size / 1024:.1f} KB"
+
+    avg_size_str = f"{avg_size:.1f} bytes"
+    if avg_size > 1024:
+        avg_size_str = f"{avg_size / 1024:.1f} KB"
+
+    # Display statistics
+    print(f"📁 Directory: {directory_path}")
+    print(f"📄 Files analyzed: {total}")
+    print(f"📦 Total size: {total_size_str}")
+    print(f"📏 Average file size: {avg_size_str}")
+    print(f"⏱️  Analysis time: {total_time:.2f} seconds")
+    print()
+
+    # Results breakdown
+    print("📈 Results:")
+    injection_pct = (injections / total * 100) if total > 0 else 0
+    safe_pct = (safe / total * 100) if total > 0 else 0
+
+    # Create visual bars
+    bar_length = 20
+    injection_bar = "█" * int((injections / total) * bar_length) if total > 0 else ""
+    safe_bar = "█" * int((safe / total) * bar_length) if total > 0 else ""
+
+    print(f"  🔴 Injections: {injections:3d} ({injection_pct:5.1f}%) {injection_bar}")
+    print(f"  🟢 Safe:       {safe:3d} ({safe_pct:5.1f}%) {safe_bar}")
+    print()
+
+    # Show top injection candidates if any
+    if injections > 0:
+        injection_results = [r for r in results if r["is_injection"]]
+        injection_results.sort(key=lambda x: x["confidence"], reverse=True)
+
+        print("🔴 Top Injection Candidates:")
+        for i, r in enumerate(injection_results[:5], 1):
+            # Truncate text for display
+            preview = r["text"][:60].replace("\n", " ").replace("\r", "")
+            if len(r["text"]) > 60:
+                preview += "..."
+
+            print(f"  {i}. {r['file']}")
+            print(f"     Confidence: {r['confidence']:.1%}")
+            print(f"     Preview: {preview}")
+            print()
+
+    # Show top safe files with high confidence
+    if safe > 0:
+        safe_results = [r for r in results if not r["is_injection"]]
+        safe_results.sort(key=lambda x: x["confidence"], reverse=True)
+
+        if len(safe_results) > 0 and safe_results[0]["confidence"] > 0.9:
+            print("🟢 Most Confidently Safe:")
+            for i, r in enumerate(safe_results[:3], 1):
+                if r["confidence"] > 0.9:
+                    preview = r["text"][:60].replace("\n", " ").replace("\r", "")
+                    if len(r["text"]) > 60:
+                        preview += "..."
+
+                    print(f"  {i}. {r['file']}")
+                    print(f"     Confidence: {r['confidence']:.1%}")
+                    print(f"     Preview: {preview}")
+                    print()
+
+    print("=" * 60)
+    print("✅ Analysis complete!")
 
 
 def main():

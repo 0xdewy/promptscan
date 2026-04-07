@@ -68,6 +68,9 @@ docs = [
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=1.3.0",
 ]
+markdown = [
+    "markdown>=3.5.0",
+]
 
 [tool.uv]
 # UV-specific configuration

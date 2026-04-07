@@ -28,7 +28,18 @@ class SubwordProcessor(BaseProcessor):
                 "Transformers library is not installed. "
                 "Install with: pip install transformers"
             )
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # Use local models only to avoid HF Hub warnings
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name, local_files_only=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Tokenizer for '{model_name}' not found locally. Please download it first.\n"
+                f'Run: python -c "from transformers import AutoTokenizer; '
+                f"AutoTokenizer.from_pretrained('{model_name}')\"\n"
+                f"Original error: {e}"
+            )
         self.max_length = max_length
 
     def encode(self, text: str) -> Dict[str, torch.Tensor]:

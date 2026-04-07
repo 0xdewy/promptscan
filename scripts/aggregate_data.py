@@ -214,7 +214,14 @@ def save_to_parquet(df: pd.DataFrame, filepath: Path) -> None:
 
 
 def main():
-    """Main aggregation function."""
+    """Main function."""
+    print("⚠️  NOTE: This script creates static split files which are deprecated.")
+    print("   Modern training uses prompts.parquet with dynamic splits.")
+    print(
+        "   The generated train/val/test.parquet files are for backward compatibility only."
+    )
+    print("=" * 60)
+    print("Aggregating data from all sources...")
     print("=" * 60)
     print("Aggregating all data sources")
     print("=" * 60)

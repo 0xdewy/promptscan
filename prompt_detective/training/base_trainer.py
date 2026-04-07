@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from ..config import ModelConfig
 from ..utils.device import get_device
@@ -235,6 +236,88 @@ class BaseTrainer(ABC):
             "val_loss": avg_loss,
             "val_accuracy": accuracy,
         }
+
+    def evaluate(self, data_loader: DataLoader) -> Dict[str, float]:
+        """
+        Evaluate the model on a given data loader.
+
+        Args:
+            data_loader: DataLoader for evaluation data
+
+        Returns:
+            Dictionary with evaluation metrics
+        """
+        self.model.eval()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+
+        # Track predictions for additional metrics
+        all_predictions = []
+        all_labels = []
+
+        with torch.no_grad():
+            for batch in data_loader:
+                # Prepare batch
+                inputs, labels = self._prepare_batch(batch)
+
+                # Mixed precision inference
+                if self.use_amp:
+                    with torch.cuda.amp.autocast():
+                        outputs = self.model(inputs)
+                        loss = self.criterion(outputs, labels)
+                else:
+                    # Standard inference
+                    outputs = self.model(inputs)
+                    loss = self.criterion(outputs, labels)
+
+                # Update metrics
+                total_loss += loss.item()
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+
+                # Store for additional metrics
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+
+        # Calculate basic metrics
+        avg_loss = total_loss / len(data_loader) if len(data_loader) > 0 else 0.0
+        accuracy = correct / total if total > 0 else 0.0
+
+        # Calculate additional metrics if we have data
+        metrics = {
+            "loss": avg_loss,
+            "accuracy": accuracy,
+        }
+
+        # Add precision, recall, F1 if we have predictions and sklearn is available
+        if len(all_predictions) > 0:
+            try:
+                from sklearn.metrics import precision_score, recall_score, f1_score
+
+                precision = precision_score(
+                    all_labels, all_predictions, average="binary", zero_division=0
+                )
+                recall = recall_score(
+                    all_labels, all_predictions, average="binary", zero_division=0
+                )
+                f1 = f1_score(
+                    all_labels, all_predictions, average="binary", zero_division=0
+                )
+
+                metrics.update(
+                    {
+                        "precision": precision,
+                        "recall": recall,
+                        "f1_score": f1,
+                    }
+                )
+            except ImportError:
+                # sklearn not available, skip additional metrics
+                pass
+
+        return metrics
 
     def train(self, epochs: Optional[int] = None) -> Dict[str, Any]:
         """

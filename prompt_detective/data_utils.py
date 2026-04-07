@@ -79,18 +79,29 @@ def ensure_data_files(dest_dir: Optional[Path] = None) -> Tuple[Path, Path, Path
     """
     Ensure data files are available locally.
 
+    NOTE: This function is deprecated. The training pipeline now uses
+    prompts.parquet directly and creates dynamic splits.
+
     Args:
         dest_dir: Destination directory (default: current directory/data)
 
     Returns:
-        Tuple of (train_path, val_path, test_path)
+        Tuple of (train_path, val_path, test_path) - placeholder paths for backward compatibility
     """
+    import warnings
+
+    warnings.warn(
+        "ensure_data_files is deprecated. Training now uses prompts.parquet with dynamic splits.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if dest_dir is None:
         dest_dir = Path.cwd() / "data"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Data files to copy
+    # Data files to copy (for backward compatibility)
     data_files = ["train.parquet", "val.parquet", "test.parquet"]
     dest_paths = []
 
@@ -180,9 +191,20 @@ def get_default_data_paths() -> Tuple[Path, Path, Path]:
     """
     Get default data paths, using package data if available.
 
+    NOTE: This function is deprecated. The training pipeline now uses
+    prompts.parquet directly and creates dynamic splits.
+
     Returns:
-        Tuple of (train_path, val_path, test_path)
+        Tuple of (train_path, val_path, test_path) - placeholder paths for backward compatibility
     """
+    import warnings
+
+    warnings.warn(
+        "get_default_data_paths is deprecated. Training now uses prompts.parquet with dynamic splits.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     # First try package data
     package_data_dir = get_package_data_dir()
     if package_data_dir:

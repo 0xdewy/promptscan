@@ -16,10 +16,13 @@ TESTS_DIR = BASE_DIR / "tests"
 MODEL_PATH = MODELS_DIR / "best_model.pt"
 
 # Parquet data paths
-TRAIN_PARQUET_PATH = DATA_DIR / "train.parquet"
-VAL_PARQUET_PATH = DATA_DIR / "val.parquet"
-TEST_PARQUET_PATH = DATA_DIR / "test.parquet"
-FULL_PARQUET_PATH = DATA_DIR / "prompts_full.parquet"
+# NOTE: Static split files (train.parquet, val.parquet, test.parquet) are deprecated
+# Training now uses prompts.parquet with dynamic splits
+TRAIN_PARQUET_PATH = DATA_DIR / "train.parquet"  # Deprecated
+VAL_PARQUET_PATH = DATA_DIR / "val.parquet"  # Deprecated
+TEST_PARQUET_PATH = DATA_DIR / "test.parquet"  # Deprecated
+FULL_PARQUET_PATH = DATA_DIR / "prompts_full.parquet"  # Deprecated
+PROMPTS_PARQUET_PATH = DATA_DIR / "prompts.parquet"  # Active dataset
 
 # Test fixtures
 TEST_FIXTURES_DIR = TESTS_DIR / "fixtures"

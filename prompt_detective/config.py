@@ -95,10 +95,20 @@ class DataConfig:
     """Configuration for data handling."""
 
     # Data paths
-    train_path: Path = field(default_factory=lambda: Path("data/train.parquet"))
-    val_path: Path = field(default_factory=lambda: Path("data/val.parquet"))
-    test_path: Path = field(default_factory=lambda: Path("data/test.parquet"))
+    # NOTE: Static split files are deprecated. Training uses prompts.parquet with dynamic splits
+    train_path: Path = field(
+        default_factory=lambda: Path("data/train.parquet")
+    )  # Deprecated
+    val_path: Path = field(
+        default_factory=lambda: Path("data/val.parquet")
+    )  # Deprecated
+    test_path: Path = field(
+        default_factory=lambda: Path("data/test.parquet")
+    )  # Deprecated
     model_dir: Path = field(default_factory=lambda: Path("models"))
+    prompts_path: Path = field(
+        default_factory=lambda: Path("data/prompts.parquet")
+    )  # Active dataset
 
     # Data processing
     min_freq: int = 2

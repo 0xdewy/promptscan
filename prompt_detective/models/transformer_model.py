@@ -30,9 +30,18 @@ class TransformerModel(BaseModel):
                 "Install with: pip install transformers"
             )
 
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=num_classes
-        )
+        # Use local models only to avoid HF Hub warnings
+        try:
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                model_name, num_labels=num_classes, local_files_only=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Model '{model_name}' not found locally. Please download it first.\n"
+                f'Run: python -c "from transformers import AutoModelForSequenceClassification; '
+                f"AutoModelForSequenceClassification.from_pretrained('{model_name}')\"\n"
+                f"Original error: {e}"
+            )
         self.model_name = model_name
         self.num_classes = num_classes
 

@@ -126,7 +126,14 @@ def export_to_parquet_split(
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
 ):
-    """Export data as train/val/test parquet splits."""
+    """Export data as train/val/test parquet splits.
+
+    NOTE: Static split files are deprecated. Modern training uses
+    prompts.parquet with dynamic splits.
+    """
+    print("⚠️  NOTE: Creating static split files which are deprecated.")
+    print("   Modern training uses prompts.parquet with dynamic splits.")
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

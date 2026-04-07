@@ -207,6 +207,163 @@ Prompt Detective is trained on a comprehensive dataset of 17,195 examples:
 - **Split**: 80% train, 10% validation, 10% test
 - **Accuracy**: 97% validation accuracy on ensemble
 
+## Batch Import and GitHub Integration
+
+Prompt Detective now supports batch imports from multiple sources to enhance the dataset and address false positives.
+
+### Importing Safe Documentation
+
+The model sometimes flags legitimate documentation as prompt injections. To fix this, you can import safe documentation from various sources:
+
+```bash
+# Import from a GitHub repository
+prompt-detective insert --github https://github.com/python/cpython --label safe
+
+# Import from a local directory
+prompt-detective insert --dir /path/to/docs --label safe --extensions .md,.txt
+
+# Import specific files
+prompt-detective insert --file README.md --file LICENSE.txt --label safe
+
+# Use batch mode for non-interactive imports
+prompt-detective insert --github https://github.com/nodejs/node --label safe --batch
+
+# Preview without importing (dry run)
+prompt-detective insert --github https://github.com/tensorflow/tensorflow --label safe --dry-run --verbose
+```
+
+### Advanced Import Options
+
+```bash
+# Filter by file extensions
+prompt-detective insert --dir docs --label safe --extensions .md,.rst,.txt
+
+# Exclude specific paths
+prompt-detective insert --github https://github.com/org/repo --label safe --exclude "node_modules/" --exclude "test/"
+
+# Limit file size
+prompt-detective insert --dir docs --label safe --max-size 1MB
+
+# Use GitHub token for higher rate limits
+prompt-detective insert --github https://github.com/org/repo --label safe --github-token YOUR_TOKEN
+
+# Or set environment variable
+export GITHUB_TOKEN=your_token_here
+prompt-detective insert --github https://github.com/org/repo --label safe
+```
+
+### Collecting Safe Documentation at Scale
+
+Use the included script to collect safe documentation from curated repositories:
+
+```bash
+# Collect from multiple repositories (requires pandas)
+python collect_safe_docs.py --max-repos 5
+
+# Specify output file
+python collect_safe_docs.py --output data/enhanced_dataset.parquet --max-repos 10
+```
+
+### Why Import Safe Documentation?
+
+The original dataset has a bias that causes false positives:
+- 86.4% of README.md files are incorrectly flagged as injections
+- 93.8% of model_card.md files are incorrectly flagged
+- Technical documentation uses instructional language that overlaps with injection patterns
+
+By importing legitimate documentation as safe examples, you can:
+1. Reduce false positive rates
+2. Improve model accuracy on technical content
+3. Create a more balanced dataset
+4. Retrain the model for better performance
+
+### Supported File Types
+
+The batch importer extracts text from:
+- **Markdown** (.md, .markdown)
+- **Code files** (.py, .js, .ts, .java, .cpp, .c, .go, .rs) - extracts comments and docstrings
+- **Documentation** (.rst, .adoc, .asciidoc)
+- **Configuration** (.yaml, .yml, .json, .toml, .ini, .cfg)
+- **Text files** (.txt, .text)
+- **Web content** (.html, .htm, .xml) - extracts text from tags
+
+### GitHub Rate Limits
+
+- **Without token**: 60 requests/hour (quickly exhausted)
+- **With token**: 5,000 requests/hour (recommended for large imports)
+- **Get a token**: [GitHub Personal Access Tokens](https://github.com/settings/tokens)
+
+## Training with Latest Data
+
+The training command automatically loads data from `prompts.parquet` and creates fresh splits (80% train, 10% validation, 10% test), ensuring newly imported data is included in training.
+
+### Data Architecture
+
+- **`prompts.parquet`**: Single source of truth containing all prompts (19,649+ examples)
+- **Dynamic splits**: Created fresh from `prompts.parquet` during training
+- **Batch imports**: Add directly to `prompts.parquet` via GitHub/docs imports
+- **Source files**: `injection_variations.parquet` and `safe_queries.parquet` are source files that have been imported
+- **Legacy files**: `prompts_full.parquet`, `train.parquet`, `val.parquet`, `test.parquet` are deprecated and backed up in `data/backup/`
+
+### Why This Matters
+
+Previously, training used stale split files (`train.parquet`, `val.parquet`, `test.parquet`) that didn't include newly imported data. This caused:
+
+- **86.4% false positive rate** on README.md files
+- **93.8% false positive rate** on model_card.md files  
+- Technical documentation incorrectly flagged as injections
+
+### How It Works Now
+
+```bash
+# 1. Import safe documentation
+prompt-detective insert --github https://github.com/python/cpython --label safe
+
+# 2. Train model (automatically includes new data)
+prompt-detective train --model-type ensemble
+
+# 3. Test improved model
+echo "Please follow these installation instructions" | prompt-detective predict
+# Result: safe (not injection)
+```
+
+### Training Process
+
+When you run `prompt-detective train`:
+
+1. **Loads all data** from `data/prompts.parquet`
+2. **Creates fresh splits** (80% train, 10% validation, 10% test)
+3. **Includes new imports** (GitHub docs, local files, etc.)
+4. **Trains on latest data** (no stale splits)
+
+### Monitoring Data Growth
+
+```bash
+# Check dataset statistics
+prompt-detective export --format stats
+
+# Expected output after importing safe docs:
+# Total prompts: 18,195 (was 17,195)
+# Injection prompts: 10,833 (59.5%, was 63.0%)
+# Safe prompts: 7,362 (40.5%, was 37.0%)
+```
+
+### Fixing False Positives
+
+To reduce false positives on documentation:
+
+1. **Import diverse safe documentation** from multiple repositories
+2. **Retrain all models** to include new safe examples
+3. **Test improvements** by checking documentation is no longer flagged
+
+```bash
+# Comprehensive fix workflow
+prompt-detective insert --github https://github.com/python/cpython --label safe --batch
+prompt-detective insert --github https://github.com/nodejs/node --label safe --batch
+prompt-detective insert --github https://github.com/tensorflow/tensorflow --label safe --batch
+prompt-detective train --model-type ensemble
+```
+
 ## Development
 
 ### Project Structure
@@ -220,7 +377,11 @@ prompt_detective/
 ├── models/                  # CNN, LSTM, Transformer implementations
 ├── processors/              # Text processors
 ├── training/                # Training framework
-└── utils/                   # Utility modules
+├── utils/                   # Utility modules
+├── github_client.py         # GitHub API client
+├── text_extractors.py       # Text extraction from various file types
+├── batch_importer.py        # Batch import framework
+└── parquet_store.py         # Parquet data storage
 ```
 
 ### Building and Publishing

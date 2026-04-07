@@ -38,6 +38,13 @@ class ParquetDataStore:
             self._save_data()
         else:
             self._data = pd.read_parquet(self.parquet_path)
+            # Ensure the DataFrame has an 'id' column
+            if "id" not in self._data.columns:
+                # Add an 'id' column with sequential numbers
+                self._data = self._data.reset_index(drop=True)
+                self._data["id"] = self._data.index + 1
+                # Save with the new ID column
+                self._save_data()
 
     def _save_data(self) -> None:
         """Save data to parquet file."""
@@ -46,7 +53,7 @@ class ParquetDataStore:
 
     def _get_next_id(self) -> int:
         """Get the next available ID."""
-        if len(self._data) == 0:
+        if len(self._data) == 0 or "id" not in self._data.columns:
             return 1
         return int(self._data["id"].max() + 1)
 
@@ -77,6 +84,7 @@ class ParquetDataStore:
 
         Args:
             prompts: List of prompt dictionaries with 'text' and 'is_injection' keys
+                     Optional keys: 'source', 'category', 'variation_type'
 
         Returns:
             List of IDs for the added prompts
@@ -88,13 +96,20 @@ class ParquetDataStore:
         new_data = []
 
         for i, prompt in enumerate(prompts):
-            new_data.append(
-                {
-                    "id": start_id + i,
-                    "text": prompt["text"],
-                    "is_injection": prompt["is_injection"],
-                }
-            )
+            # Create base record
+            record = {
+                "id": start_id + i,
+                "text": prompt["text"],
+                "is_injection": prompt["is_injection"],
+            }
+
+            # Add optional fields if present
+            optional_fields = ["source", "category", "variation_type"]
+            for field in optional_fields:
+                if field in prompt:
+                    record[field] = prompt[field]
+
+            new_data.append(record)
 
         new_df = pd.DataFrame(new_data)
         self._data = pd.concat([self._data, new_df], ignore_index=True)
