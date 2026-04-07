@@ -74,17 +74,17 @@ Thumbs.db
 # *.sqlite3
 
 # Model checkpoints and datasets (use git-lfs if committing)
-# *.pt
-# *.pth
-# *.ckpt
-# *.bin
-# *.safetensors
-# *.onnx
-# *.h5
-# *.hdf5
-# *.joblib
-# *.pkl
-# *.pickle
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.onnx
+*.h5
+*.hdf5
+*.joblib
+*.pkl
+*.pickle
 
 # HuggingFace datasets cache
 datasets/
