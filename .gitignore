@@ -144,8 +144,8 @@ dmypy.json
 output/
 results/
 predictions/
-# checkpoints/  # Commented out - we now track model checkpoints with Git LFS
-# models/
+checkpoints/
+models/
 
 # HuggingFace Spaces
 app.py

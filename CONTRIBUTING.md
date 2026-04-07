@@ -13,8 +13,8 @@ Thank you for your interest in contributing to Prompt Detective! This guide will
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/prompt-detective.git
-   cd prompt-detective
+   git clone https://github.com/yourusername/promptscan.git
+   cd promptscan
    ```
 
 ### Setting Up the Development Environment
@@ -99,12 +99,12 @@ uv sync
 #### Running the CLI
 ```bash
 # Using uv run
-uv run prompt-detective --version
-uv run prompt-detective predict "Test text"
+uv run promptscan --version
+uv run promptscan predict "Test text"
 
 # Or activate the virtual environment first
 source .venv/bin/activate
-prompt-detective --version
+promptscan --version
 ```
 
 ### Project Structure

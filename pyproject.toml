@@ -1,9 +1,9 @@
 [project]
-name = "prompt-detective"
+name = "promptscan"
 version = "0.1.0"
 description = "AI-powered prompt injection detective - detect and analyze suspicious prompts"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "0xdewy"},
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 keywords = ["security", "ai-safety", "prompt-injection", "machine-learning", "nlp", "content-moderation"]
-urls = {Homepage = "https://github.com/yourusername/prompt-detective"}
+urls = {Homepage = "https://github.com/0xdewy/promptscan"}
 
 dependencies = [
     "torch>=2.0.0",
@@ -41,7 +41,7 @@ dependencies = [
 
 
 [project.scripts]
-prompt-detective = "prompt_detective.cli:main"
+promptscan = "prompt_detective.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -70,6 +70,16 @@ docs = [
 ]
 markdown = [
     "markdown>=3.5.0",
+]
+deployment = [
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "gunicorn>=21.2.0",
+    "x402[fastapi]>=2.6.0",
+    "x402[evm]>=2.6.0",
+    "structlog>=23.2.0",
+    "httpx>=0.26.0",
+    "python-multipart>=0.0.6",
 ]
 
 [tool.uv]

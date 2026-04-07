@@ -238,13 +238,13 @@ def train_model(
 ):
     """Train the model from parquet files.
 
-    DEPRECATED: Use `prompt-detective train` command instead which uses
+    DEPRECATED: Use `promptscan train` command instead which uses
     prompts.parquet with dynamic splits.
     """
     import warnings
 
     warnings.warn(
-        "train_model is deprecated. Use 'prompt-detective train' command instead.",
+        "train_model is deprecated. Use 'promptscan train' command instead.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -343,7 +343,7 @@ def legacy_main():
         print(
             "⚠️  DEPRECATED: The --train option in SimplePromptDetector is deprecated."
         )
-        print("   Use 'prompt-detective train' command instead for modern training.")
+        print("   Use 'promptscan train' command instead for modern training.")
         print("   The modern training:")
         print("   1. Uses prompts.parquet as the data source")
         print("   2. Creates dynamic splits (80% train, 10% validation, 10% test)")
@@ -351,7 +351,7 @@ def legacy_main():
         print("   4. Supports ensemble models (CNN, LSTM, Transformer)")
         print()
         print("   To train with the modern pipeline:")
-        print("   $ prompt-detective train --model-type ensemble")
+        print("   $ promptscan train --model-type ensemble")
         print()
 
         # Try to use the old training for backward compatibility
@@ -369,7 +369,7 @@ def legacy_main():
                 "   Static split files (train.parquet, val.parquet, test.parquet) not found."
             )
             print("   These have been replaced by prompts.parquet with dynamic splits.")
-            print("   Run 'prompt-detective train' instead.")
+            print("   Run 'promptscan train' instead.")
         return
 
     # Initialize detector
@@ -624,7 +624,7 @@ def main():
     import warnings
 
     warnings.warn(
-        "Using detector.py directly is deprecated. Use 'prompt-detective' CLI instead.",
+        "Using detector.py directly is deprecated. Use 'promptscan' CLI instead.",
         DeprecationWarning,
         stacklevel=2,
     )

@@ -9,7 +9,7 @@ tags:
 - security
 - content-moderation
 datasets:
-- prompt-detective-dataset
+- promptscan-dataset
 metrics:
 - accuracy
 - f1
@@ -47,10 +47,10 @@ The dataset includes various types of prompt injection attacks:
 ### Installation
 ```bash
 # Using uv (recommended)
-uv pip install prompt-detective
+uv pip install promptscan
 
 # Using pip
-pip install prompt-detective
+pip install promptscan
 ```
 
 ### Basic Usage
@@ -73,19 +73,19 @@ if "individual_predictions" in result:
 ### Command Line Interface
 ```bash
 # Analyze text (ensemble is default)
-prompt-detective predict "Ignore all previous instructions"
+promptscan predict "Ignore all previous instructions"
 
 # Analyze file
-prompt-detective predict --file input.txt
+promptscan predict --file input.txt
 
 # Analyze directory with summary
-prompt-detective predict --dir ./prompts/ --summary
+promptscan predict --dir ./prompts/ --summary
 
 # Train a new model
-prompt-detective train
+promptscan train
 
 # Import safe documentation from GitHub
-prompt-detective insert --github https://github.com/python/cpython --label safe
+promptscan insert --github https://github.com/python/cpython --label safe
 ```
 
 ## Performance
@@ -148,7 +148,7 @@ If you use this model in your research, please cite:
   title = {Prompt Detective: Prompt Injection Detection Model},
   author = {Prompt Detective Contributors},
   year = {2024},
-  url = {https://github.com/yourusername/prompt-detective}
+  url = {https://github.com/0xdewy/promptscan}
 }
 ```
 
@@ -158,4 +158,4 @@ MIT License
 
 ## Contact
 
-For questions, issues, or contributions, please open an issue on the [GitHub repository](https://github.com/yourusername/prompt-detective).
+For questions, issues, or contributions, please open an issue on the [GitHub repository](https://github.com/0xdewy/promptscan).

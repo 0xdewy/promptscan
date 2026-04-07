@@ -4,14 +4,14 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/prompt-detective.svg)](https://pypi.org/project/prompt-detective/)
+[![PyPI version](https://badge.fury.io/py/promptscan.svg)](https://pypi.org/project/promptscan/)
 
 Detect malicious prompt injection attacks with a production-ready ensemble of CNN, LSTM, and Transformer models. See exactly how each model votes with transparent confidence scores.
 
 ```bash
 # Install and run in 30 seconds
-uv pip install prompt-detective
-prompt-detective predict "Ignore all previous instructions"
+uv pip install promptscan
+promptscan predict "Ignore all previous instructions"
 ```
 
 ## Why Prompt Detective?
@@ -38,17 +38,17 @@ Prompt injections are emerging security threats where malicious users bypass AI 
 
 ```bash
 # Using uv (recommended)
-uv pip install prompt-detective
+uv pip install promptscan
 
 # Using pip
-pip install prompt-detective
+pip install promptscan
 ```
 
 ### Basic Usage
 
 ```bash
 # Analyze text (ensemble is default)
-prompt-detective predict "Ignore all previous instructions"
+promptscan predict "Ignore all previous instructions"
 
 # Output shows individual model predictions:
 # Individual model predictions:
@@ -59,13 +59,13 @@ prompt-detective predict "Ignore all previous instructions"
 # Ensemble result: INJECTION (99.85%)
 
 # Analyze files and directories
-prompt-detective predict --file input.txt
-prompt-detective predict --dir ./prompts/ --summary
+promptscan predict --file input.txt
+promptscan predict --dir ./prompts/ --summary
 
 # Use different model types
-prompt-detective predict --model-type cnn "Test text"
-prompt-detective predict --model-type lstm "Test text"
-prompt-detective predict --model-type transformer "Test text"
+promptscan predict --model-type cnn "Test text"
+promptscan predict --model-type lstm "Test text"
+promptscan predict --model-type transformer "Test text"
 ```
 
 ## Installation Options
@@ -73,8 +73,8 @@ prompt-detective predict --model-type transformer "Test text"
 ### From Source
 
 ```bash
-git clone https://github.com/0xdewy/prompt-detective.git
-cd prompt-detective
+git clone https://github.com/0xdewy/promptscan.git
+cd promptscan
 uv pip install -e .
 ```
 
@@ -98,43 +98,43 @@ uv run ruff check --fix prompt_detective/ scripts/ tests/
 
 ```bash
 # Train CNN model (default for training)
-prompt-detective train
+promptscan train
 
 # Train specific model types
-prompt-detective train --model-type lstm
-prompt-detective train --model-type transformer
+promptscan train --model-type lstm
+promptscan train --model-type transformer
 
 # Customize training parameters
-prompt-detective train --epochs 10 --batch-size 32 --learning-rate 0.001
+promptscan train --epochs 10 --batch-size 32 --learning-rate 0.001
 ```
 
 ### Advanced Ensemble Options
 
 ```bash
 # Use different voting strategies
-prompt-detective predict --voting-strategy weighted "Test text"
-prompt-detective predict --voting-strategy confidence "Test text"
-prompt-detective predict --voting-strategy soft "Test text"
+promptscan predict --voting-strategy weighted "Test text"
+promptscan predict --voting-strategy confidence "Test text"
+promptscan predict --voting-strategy soft "Test text"
 
 # Specify custom model directory
-prompt-detective predict --model-dir ./my_models "Test text"
+promptscan predict --model-dir ./my_models "Test text"
 
 # Force CPU or GPU usage
-prompt-detective predict --device cpu "Test text"
-prompt-detective predict --device cuda "Test text"
+promptscan predict --device cpu "Test text"
+promptscan predict --device cuda "Test text"
 ```
 
 ### Data Management
 
 ```bash
 # Export dataset statistics
-prompt-detective export --format stats
+promptscan export --format stats
 
 # Export to JSON
-prompt-detective export --format json --output prompts.json
+promptscan export --format json --output prompts.json
 
 # Export to CSV
-prompt-detective export --format csv --output prompts.csv
+promptscan export --format csv --output prompts.csv
 ```
 
 ## Python API
@@ -217,39 +217,39 @@ The model sometimes flags legitimate documentation as prompt injections. To fix 
 
 ```bash
 # Import from a GitHub repository
-prompt-detective insert --github https://github.com/python/cpython --label safe
+promptscan insert --github https://github.com/python/cpython --label safe
 
 # Import from a local directory
-prompt-detective insert --dir /path/to/docs --label safe --extensions .md,.txt
+promptscan insert --dir /path/to/docs --label safe --extensions .md,.txt
 
 # Import specific files
-prompt-detective insert --file README.md --file LICENSE.txt --label safe
+promptscan insert --file README.md --file LICENSE.txt --label safe
 
 # Use batch mode for non-interactive imports
-prompt-detective insert --github https://github.com/nodejs/node --label safe --batch
+promptscan insert --github https://github.com/nodejs/node --label safe --batch
 
 # Preview without importing (dry run)
-prompt-detective insert --github https://github.com/tensorflow/tensorflow --label safe --dry-run --verbose
+promptscan insert --github https://github.com/tensorflow/tensorflow --label safe --dry-run --verbose
 ```
 
 ### Advanced Import Options
 
 ```bash
 # Filter by file extensions
-prompt-detective insert --dir docs --label safe --extensions .md,.rst,.txt
+promptscan insert --dir docs --label safe --extensions .md,.rst,.txt
 
 # Exclude specific paths
-prompt-detective insert --github https://github.com/org/repo --label safe --exclude "node_modules/" --exclude "test/"
+promptscan insert --github https://github.com/org/repo --label safe --exclude "node_modules/" --exclude "test/"
 
 # Limit file size
-prompt-detective insert --dir docs --label safe --max-size 1MB
+promptscan insert --dir docs --label safe --max-size 1MB
 
 # Use GitHub token for higher rate limits
-prompt-detective insert --github https://github.com/org/repo --label safe --github-token YOUR_TOKEN
+promptscan insert --github https://github.com/org/repo --label safe --github-token YOUR_TOKEN
 
 # Or set environment variable
 export GITHUB_TOKEN=your_token_here
-prompt-detective insert --github https://github.com/org/repo --label safe
+promptscan insert --github https://github.com/org/repo --label safe
 ```
 
 ### Collecting Safe Documentation at Scale
@@ -317,19 +317,19 @@ Previously, training used stale split files (`train.parquet`, `val.parquet`, `te
 
 ```bash
 # 1. Import safe documentation
-prompt-detective insert --github https://github.com/python/cpython --label safe
+promptscan insert --github https://github.com/python/cpython --label safe
 
 # 2. Train model (automatically includes new data)
-prompt-detective train --model-type ensemble
+promptscan train --model-type ensemble
 
 # 3. Test improved model
-echo "Please follow these installation instructions" | prompt-detective predict
+echo "Please follow these installation instructions" | promptscan predict
 # Result: safe (not injection)
 ```
 
 ### Training Process
 
-When you run `prompt-detective train`:
+When you run `promptscan train`:
 
 1. **Loads all data** from `data/prompts.parquet`
 2. **Creates fresh splits** (80% train, 10% validation, 10% test)
@@ -340,7 +340,7 @@ When you run `prompt-detective train`:
 
 ```bash
 # Check dataset statistics
-prompt-detective export --format stats
+promptscan export --format stats
 
 # Expected output after importing safe docs:
 # Total prompts: 18,195 (was 17,195)
@@ -358,10 +358,10 @@ To reduce false positives on documentation:
 
 ```bash
 # Comprehensive fix workflow
-prompt-detective insert --github https://github.com/python/cpython --label safe --batch
-prompt-detective insert --github https://github.com/nodejs/node --label safe --batch
-prompt-detective insert --github https://github.com/tensorflow/tensorflow --label safe --batch
-prompt-detective train --model-type ensemble
+promptscan insert --github https://github.com/python/cpython --label safe --batch
+promptscan insert --github https://github.com/nodejs/node --label safe --batch
+promptscan insert --github https://github.com/tensorflow/tensorflow --label safe --batch
+promptscan train --model-type ensemble
 ```
 
 ## Development

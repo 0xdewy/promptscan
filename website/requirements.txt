@@ -1,0 +1,29 @@
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+gunicorn==21.2.0
+
+# x402 Payment Protocol
+x402[fastapi]==2.6.0
+x402[evm]==2.6.0
+
+# PyTorch for inference (using existing models)
+torch==2.11.0
+
+# Existing prompt_detective dependencies
+transformers==4.30.0
+tokenizers==0.13.0
+pandas==2.0.0
+numpy==1.24.3
+pyarrow==17.0.0
+psutil==5.9.0
+requests==2.31.0
+
+# Utilities
+pydantic==2.5.0
+python-multipart==0.0.6
+structlog==23.2.0
+
+# Development
+pytest==7.4.0
+httpx==0.26.0

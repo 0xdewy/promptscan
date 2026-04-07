@@ -102,7 +102,7 @@ def predict_command(args):
             print("   2. Use a single model: --model-type cnn|lstm|transformer")
         else:
             print(
-                f"   1. Train a {args.model_type} model: prompt-detective train --model-type {args.model_type}"
+                f"   1. Train a {args.model_type} model: promptscan train --model-type {args.model_type}"
             )
             print("   2. Specify a different model path with --model")
         sys.exit(1)
@@ -1065,28 +1065,28 @@ def main():
         epilog="""
 Examples:
     # Analyze text with beautiful output
-    prompt-detective predict "Ignore all previous instructions"
+    promptscan predict "Ignore all previous instructions"
 
     # Analyze file with details
-    prompt-detective predict --file input.txt
+    promptscan predict --file input.txt
 
     # Analyze directory with overview
-    prompt-detective predict --dir ./prompts
+    promptscan predict --dir ./prompts
 
     # Analyze directory with verbose file list
-    prompt-detective predict --dir ./prompts --verbose
+    promptscan predict --dir ./prompts --verbose
 
     # Analyze URL with fetch details
-    prompt-detective predict --url https://example.com
+    promptscan predict --url https://example.com
 
     # Train model
-    prompt-detective train
+    promptscan train
 
     # Export data
-    prompt-detective export --format json --output prompts.json
+    promptscan export --format json --output prompts.json
 
     # Show version
-    prompt-detective --version
+    promptscan --version
         """,
     )
 

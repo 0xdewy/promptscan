@@ -26,15 +26,15 @@ def get_package_data_dir() -> Optional[Path]:
         if prefix:
             data_dirs.extend(
                 [
-                    Path(prefix) / "share" / "prompt-detective",
-                    Path(prefix) / "local" / "share" / "prompt-detective",
+                    Path(prefix) / "share" / "promptscan",
+                    Path(prefix) / "local" / "share" / "promptscan",
                 ]
             )
 
     # User site directories
     try:
         for site_dir in site.getsitepackages():
-            data_dirs.append(Path(site_dir).parent / "share" / "prompt-detective")
+            data_dirs.append(Path(site_dir).parent / "share" / "promptscan")
     except Exception:
         pass
 
@@ -180,7 +180,7 @@ def ensure_model_file(dest_dir: Optional[Path] = None, model_type: str = "cnn") 
     # Model not available
     warnings.warn(
         f"Pre-trained {model_type} model not found in package. "
-        f"You may need to train a model first with 'prompt-detective train --model-type {model_type}'.",
+        f"You may need to train a model first with 'promptscan train --model-type {model_type}'.",
         RuntimeWarning,
         stacklevel=2,
     )

@@ -189,7 +189,7 @@ All aggregated data is used in accordance with source licenses and with proper a
   title = {Prompt Detective Dataset (Extended)},
   author = {Prompt Detective Contributors and Dataset Aggregators},
   year = {2024},
-  url = {https://github.com/yourusername/prompt-detective},
+  url = {https://github.com/0xdewy/promptscan},
   note = {Aggregated dataset including examples from deepset/prompt-injections and AnaBelenBarbero/detect-prompt-injection}
 }
 ```

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple wrapper script to run prompt-detective
+# Simple wrapper script to run 
 
 set -e
 
@@ -15,4 +15,4 @@ fi
 
 # Activate virtual environment and run the command
 source "$SCRIPT_DIR/.venv/bin/activate"
-exec prompt-detective "$@"
+exec prompt-scan "$@"
