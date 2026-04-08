@@ -11,7 +11,7 @@ x402[evm]==2.6.0
 torch==2.11.0
 
 # Existing prompt_detective dependencies
-transformers==4.30.0
+transformers==5.0.0rc3
 tokenizers==0.13.0
 pandas==2.0.0
 numpy==1.24.3
