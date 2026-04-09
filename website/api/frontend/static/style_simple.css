@@ -194,6 +194,109 @@ button i {
     transform: translateY(-2px);
 }
 
+/* Upload icon button */
+.upload-icon {
+    background: #edf2f7;
+    color: #4a5568;
+    width: 50px;
+    padding: 15px;
+    flex: 0 0 auto;
+}
+
+.upload-icon:hover {
+    background: #e2e8f0;
+    color: #667eea;
+    transform: translateY(-2px);
+}
+
+/* Selected file display */
+.selected-file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.selected-file-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.selected-file-info i {
+    color: #667eea;
+    font-size: 1rem;
+}
+
+.selected-file-info span {
+    font-size: 0.9rem;
+    color: #4a5568;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.selected-file-info .file-size {
+    color: #718096;
+    font-size: 0.8rem;
+    background: #edf2f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.remove-file-btn {
+    background: none;
+    border: none;
+    color: #718096;
+    cursor: pointer;
+    padding: 5px;
+    font-size: 0.9rem;
+    transition: color 0.15s ease;
+    border-radius: 4px;
+}
+
+.remove-file-btn:hover {
+    color: #e53e3e;
+    background: rgba(229, 62, 62, 0.1);
+}
+
+/* Upload info */
+.upload-info {
+    margin-top: 15px;
+    padding: 10px 15px;
+    background: #f7fafc;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.upload-hint {
+    color: #718096;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.upload-hint i {
+    color: #667eea;
+}
+
+/* Textarea drag-drop states */
+textarea.drag-over {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
 /* Loading State */
 .status-message {
     display: flex;
@@ -530,6 +633,10 @@ footer a:hover {
     }
     
     button {
+        width: 100%;
+    }
+    
+    .upload-icon {
         width: 100%;
     }
     

@@ -41,18 +41,18 @@ dependencies = [
 
 
 [project.scripts]
-promptscan = "prompt_detective.cli:main"
+promptscan = "promptscan.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["prompt_detective", "prompt_detective.models", "prompt_detective.utils", "prompt_detective.ensemble", "prompt_detective.processors", "prompt_detective.training", "prompt_detective.training.strategies"]
+packages = ["promptscan", "promptscan.models", "promptscan.utils", "promptscan.ensemble", "promptscan.processors", "promptscan.training", "promptscan.training.strategies"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"prompt_detective.models" = ["checkpoints/*.pt"]
+"promptscan.models" = ["checkpoints/*.pt"]
 "*" = ["*.pt", "*.parquet", "*.csv", "*.db", "*.yaml", "*.txt"]
 
 [project.optional-dependencies]
@@ -88,10 +88,10 @@ link-mode = "copy"
 
 
 
-[project.entry-points."prompt_detective.commands"]
-predict = "prompt_detective.cli:predict_command"
-train = "prompt_detective.cli:train_command"
-export = "prompt_detective.cli:export_command"
+[project.entry-points."promptscan.commands"]
+predict = "promptscan.cli:predict_command"
+train = "promptscan.cli:train_command"
+export = "promptscan.cli:export_command"
 
 [tool.black]
 line-length = 88

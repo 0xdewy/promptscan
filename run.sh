@@ -15,4 +15,5 @@ fi
 
 # Activate virtual environment and run the command
 source "$SCRIPT_DIR/.venv/bin/activate"
-exec prompt-scan "$@"
+
+uv run python -m promptscan.cli
