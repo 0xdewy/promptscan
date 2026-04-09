@@ -1,4 +1,5 @@
-// Production JavaScript for Prompt Detective
+// promptscan
+console.log('promptscan script loading...');
 
 // DOM Elements
 const promptInput = document.getElementById('promptInput');
@@ -16,6 +17,23 @@ const modelSource = document.getElementById('modelSource');
 const modelResults = document.getElementById('modelResults');
 const injectionVotes = document.getElementById('injectionVotes');
 const safeVotes = document.getElementById('safeVotes');
+const correctBtn = document.getElementById('correctBtn');
+const wrongBtn = document.getElementById('wrongBtn');
+const feedbackStatus = document.getElementById('feedbackStatus');
+
+// File upload elements
+const fileInput = document.getElementById('fileInput');
+const uploadIconBtn = document.getElementById('uploadIconBtn');
+const selectedFileContainer = document.getElementById('selectedFileContainer');
+const selectedFileName = document.getElementById('selectedFileName');
+const selectedFileSize = document.getElementById('selectedFileSize');
+
+// Current analysis data for feedback submission
+let currentAnalysisData = null;
+
+// Selected file state
+let selectedFile = null;
+let fileContent = '';
 
 // Example prompts for demonstration
 const examplePrompts = [
@@ -31,7 +49,7 @@ const examplePrompts = [
 
 // Initialize the application
 function initApp() {
-    console.log('Prompt Detective initialized');
+    console.log('promptscan initialized');
     
     // Set up event listeners
     promptInput.addEventListener('keydown', handleKeydown);
@@ -39,11 +57,14 @@ function initApp() {
     exampleBtn.addEventListener('click', loadExample);
     clearBtn.addEventListener('click', clearPrompt);
     
+    // Initialize feedback buttons state
+    resetFeedbackState();
+    
+    // Initialize file upload
+    initFileUpload();
+    
     // Check API health
     checkHealth();
-    
-    // Show results card (initially empty)
-    resultsCard.style.display = 'block';
     
     // Focus on input
     promptInput.focus();
@@ -80,14 +101,27 @@ function clearPrompt() {
     promptInput.value = '';
     promptInput.focus();
     
+    // Clear selected file
+    removeSelectedFile();
+    
     // Reset results to placeholder state
     resetResults();
     
-    showNotification('Prompt cleared', 'info');
+    // Reset feedback state
+    resetFeedbackState();
+    
+    showNotification('Cleared', 'info');
 }
 
 // Reset results to placeholder state
 function resetResults() {
+    // Hide results section
+    const resultsSection = document.querySelector('.results-section');
+    resultsSection.classList.remove('visible');
+    setTimeout(() => {
+        resultsSection.classList.add('hidden');
+    }, 500);
+    
     analyzedPrompt.textContent = 'Enter a prompt and click Analyze to see results';
     
     // Reset verdict
@@ -148,20 +182,28 @@ function resetResults() {
     safeVotes.textContent = '0';
     injectionVotes.className = 'votes-value';
     safeVotes.className = 'votes-value';
+    
+    // Reset feedback state
+    resetFeedbackState();
 }
 
-// Analyze prompt
+// Analyze prompt (handles both text and file content)
 async function analyzePrompt() {
-    const prompt = promptInput.value.trim();
+    let prompt = promptInput.value.trim();
+    
+    // Use file content if a file is selected
+    if (selectedFile && fileContent) {
+        prompt = fileContent.trim();
+    }
     
     if (!prompt) {
-        showNotification('Please enter a prompt to analyze', 'error');
+        showNotification('Please enter a prompt or upload a file to analyze', 'error');
         promptInput.focus();
         return;
     }
     
     if (prompt.length > 10000) {
-        showNotification('Prompt is too long (max 10000 characters)', 'error');
+        showNotification('Content is too long (max 10000 characters)', 'error');
         return;
     }
     
@@ -189,10 +231,11 @@ async function analyzePrompt() {
         displayResults(data);
         
         // Show success notification
-        showNotification('Analysis complete', 'success');
+        const source = selectedFile ? `File "${selectedFile.name}"` : 'Prompt';
+        showNotification(`${source} analysis complete`, 'success');
         
     } catch (error) {
-        console.error('Error analyzing prompt:', error);
+        console.error('Error analyzing:', error);
         
         // Show error in results
         displayError(error.message);
@@ -225,8 +268,36 @@ function setLoading(isLoading) {
 
 // Display results
 function displayResults(data) {
-    // Display analyzed prompt
+    // Show results section with animation
+    const resultsSection = document.querySelector('.results-section');
+    resultsSection.classList.remove('hidden');
+    setTimeout(() => {
+        resultsSection.classList.add('visible');
+    }, 10);
+    
+    // Display analyzed prompt (truncated by default)
     analyzedPrompt.textContent = data.prompt;
+    analyzedPrompt.classList.add('truncated');
+    
+    // Reset toggle button state
+    const promptToggle = document.getElementById('promptToggle');
+    if (promptToggle) {
+        const toggleIcon = promptToggle.querySelector('i');
+        const toggleText = promptToggle.querySelector('span');
+        toggleIcon.classList.remove('fa-chevron-up');
+        toggleIcon.classList.add('fa-chevron-down');
+        toggleText.textContent = 'Show more';
+        promptToggle.classList.remove('expanded');
+    }
+    
+    // Ensure technical details are collapsed by default
+    const technicalContent = document.querySelector('.collapsible-content');
+    const techToggleBtn = document.querySelector('.collapsible-header .toggle-btn i');
+    if (technicalContent && techToggleBtn) {
+        technicalContent.classList.remove('expanded');
+        techToggleBtn.classList.remove('fa-chevron-up');
+        techToggleBtn.classList.add('fa-chevron-down');
+    }
     
     // Display ensemble verdict
     const isInjection = data.ensemble_prediction === 'INJECTION';
@@ -261,6 +332,12 @@ function displayResults(data) {
     
     // Scroll to results
     resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+    // Store current analysis data for feedback
+    currentAnalysisData = data;
+    
+    // Enable feedback buttons
+    enableFeedbackButtons();
 }
 
 // Display individual model results
@@ -324,6 +401,140 @@ function displayError(errorMessage) {
     // Reset votes
     injectionVotes.textContent = '0';
     safeVotes.textContent = '0';
+}
+
+// ============================================
+// SINGLE-FILE UPLOAD FUNCTIONALITY
+// ============================================
+
+// Initialize file upload functionality
+function initFileUpload() {
+    if (!fileInput || !promptInput || !uploadIconBtn) return;
+    
+    // Upload icon button click
+    uploadIconBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    // Drag and drop on textarea
+    promptInput.addEventListener('dragover', handleDragOver);
+    promptInput.addEventListener('dragleave', handleDragLeave);
+    promptInput.addEventListener('drop', handleDrop);
+}
+
+// Handle file selection (from click or drop)
+function handleFileSelect(e) {
+    const files = e.target.files;
+    if (files.length > 0) {
+        processFile(files[0]);
+    }
+}
+
+// Handle drag over
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.add('drag-over');
+}
+
+// Handle drag leave
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.remove('drag-over');
+}
+
+// Handle drop
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        processFile(files[0]);
+    }
+}
+
+// Process a single file
+function processFile(file) {
+    // Validate file type
+    const extension = '.' + file.name.split('.').pop().toLowerCase();
+    const acceptedExtensions = ['.txt', '.md', '.json', '.csv', '.yaml', '.yml', '.py', '.js', '.html'];
+    
+    if (!acceptedExtensions.includes(extension)) {
+        showNotification(`File type not supported: ${file.name}`, 'error');
+        return;
+    }
+    
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+        showNotification(`File too large (max 10MB): ${file.name}`, 'error');
+        return;
+    }
+    
+    // Read file content
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        const content = e.target.result;
+        
+        // Store file and content
+        selectedFile = file;
+        fileContent = content;
+        
+        // Clear textarea and show file info
+        promptInput.value = '';
+        showSelectedFile(file);
+        
+        showNotification(`File loaded: ${file.name}`, 'success');
+    };
+    
+    reader.onerror = function() {
+        showNotification(`Error reading file: ${file.name}`, 'error');
+    };
+    
+    reader.readAsText(file);
+}
+
+// Show selected file info
+function showSelectedFile(file) {
+    if (!selectedFileContainer || !selectedFileName || !selectedFileSize) return;
+    
+    selectedFileName.textContent = file.name;
+    selectedFileSize.textContent = formatFileSize(file.size);
+    selectedFileContainer.style.display = 'flex';
+}
+
+// Remove selected file
+function removeSelectedFile() {
+    selectedFile = null;
+    fileContent = '';
+    
+    if (selectedFileContainer) {
+        selectedFileContainer.style.display = 'none';
+    }
+    
+    // Clear file input
+    if (fileInput) {
+        fileInput.value = '';
+    }
+    
+    showNotification('File removed', 'info');
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // Check API health
@@ -435,6 +646,152 @@ function showNotification(message, type = 'info') {
             notification.remove();
         }
     }, 5000);
+}
+
+// Enable feedback buttons
+function enableFeedbackButtons() {
+    if (correctBtn && wrongBtn) {
+        correctBtn.disabled = false;
+        wrongBtn.disabled = false;
+        feedbackStatus.classList.add('hidden');
+        feedbackStatus.textContent = '';
+    }
+}
+
+// Disable feedback buttons
+function disableFeedbackButtons() {
+    if (correctBtn && wrongBtn) {
+        correctBtn.disabled = true;
+        wrongBtn.disabled = true;
+    }
+}
+
+// Set feedback status
+function setFeedbackStatus(message, type = 'loading') {
+    if (feedbackStatus) {
+        feedbackStatus.textContent = message;
+        feedbackStatus.className = `feedback-status ${type}`;
+        feedbackStatus.classList.remove('hidden');
+    }
+}
+
+// Submit feedback to API
+async function submitFeedback(feedbackType) {
+    if (!currentAnalysisData) {
+        showNotification('No analysis data available for feedback', 'error');
+        return;
+    }
+    
+    // Determine user label based on feedback type
+    const userLabel = feedbackType === 'correct' 
+        ? currentAnalysisData.ensemble_prediction 
+        : (currentAnalysisData.ensemble_prediction === 'SAFE' ? 'INJECTION' : 'SAFE');
+    
+    // Prepare feedback data
+    const feedbackData = {
+        prompt: currentAnalysisData.prompt,
+        predicted_label: currentAnalysisData.ensemble_prediction,
+        user_label: userLabel,
+        ensemble_confidence: currentAnalysisData.ensemble_confidence,
+        individual_predictions: currentAnalysisData.individual_predictions,
+        model_type: 'ensemble',
+        voting_strategy: 'majority',
+        source: 'web_interface'
+    };
+    
+    // Disable buttons and show loading
+    disableFeedbackButtons();
+    setFeedbackStatus('Submitting feedback...', 'loading');
+    
+    try {
+        // Submit feedback to API
+        const response = await fetch('/api/v1/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(feedbackData)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API error (${response.status}): ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Show success message
+        setFeedbackStatus('Thank you! Your feedback helps improve the model.', 'success');
+        showNotification('Feedback submitted successfully', 'success');
+        
+        // Keep buttons disabled after successful submission
+        // (user can't submit feedback twice for the same analysis)
+        
+    } catch (error) {
+        console.error('Error submitting feedback:', error);
+        
+        // Show error
+        setFeedbackStatus('Failed to submit feedback. Please try again.', 'error');
+        showNotification('Failed to submit feedback: ' + error.message, 'error');
+        
+        // Re-enable buttons so user can try again
+        enableFeedbackButtons();
+    }
+}
+
+// Reset feedback state when clearing prompt
+function resetFeedbackState() {
+    currentAnalysisData = null;
+    if (correctBtn && wrongBtn) {
+        correctBtn.disabled = true;
+        wrongBtn.disabled = true;
+    }
+    if (feedbackStatus) {
+        feedbackStatus.classList.add('hidden');
+        feedbackStatus.textContent = '';
+    }
+}
+
+// Toggle prompt preview (show more/less)
+function togglePromptPreview() {
+    const promptText = document.getElementById('analyzedPrompt');
+    const promptToggle = document.getElementById('promptToggle');
+    const toggleIcon = promptToggle.querySelector('i');
+    const toggleText = promptToggle.querySelector('span');
+    
+    if (promptText.classList.contains('truncated')) {
+        // Expand
+        promptText.classList.remove('truncated');
+        toggleIcon.classList.remove('fa-chevron-down');
+        toggleIcon.classList.add('fa-chevron-up');
+        toggleText.textContent = 'Show less';
+        promptToggle.classList.add('expanded');
+    } else {
+        // Collapse
+        promptText.classList.add('truncated');
+        toggleIcon.classList.remove('fa-chevron-up');
+        toggleIcon.classList.add('fa-chevron-down');
+        toggleText.textContent = 'Show more';
+        promptToggle.classList.remove('expanded');
+    }
+}
+
+// Toggle technical details
+function toggleTechnicalDetails() {
+    const technicalContent = document.querySelector('.collapsible-content');
+    const toggleBtn = document.querySelector('.collapsible-header .toggle-btn i');
+    
+    if (technicalContent.classList.contains('expanded')) {
+        // Collapse
+        technicalContent.classList.remove('expanded');
+        toggleBtn.classList.remove('fa-chevron-up');
+        toggleBtn.classList.add('fa-chevron-down');
+    } else {
+        // Expand
+        technicalContent.classList.add('expanded');
+        toggleBtn.classList.remove('fa-chevron-down');
+        toggleBtn.classList.add('fa-chevron-up');
+    }
 }
 
 // Initialize when DOM is loaded

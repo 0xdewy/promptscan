@@ -1,4 +1,5 @@
-// Simple JavaScript for Prompt Detective frontend
+// promptscan
+console.log('promptscan simple script loading...');
 
 // DOM Elements
 const promptInput = document.getElementById('promptInput');
@@ -11,6 +12,8 @@ const verdictExplanation = document.getElementById('verdictExplanation');
 const modelResults = document.getElementById('modelResults');
 const inferenceTime = document.getElementById('inferenceTime');
 const votes = document.getElementById('votes');
+const fileInput = document.getElementById('fileInput');
+const uploadIconBtn = document.getElementById('uploadIconBtn');
 
 // Example prompts
 const examplePrompts = [
@@ -161,3 +164,214 @@ document.addEventListener('keydown', function(e) {
         analyzePrompt();
     }
 });
+
+// Single-file upload functionality for simple interface
+function initFileUpload() {
+    if (!fileInput || !promptInput || !uploadIconBtn) return;
+    
+    // Upload icon button click
+    uploadIconBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    // Drag and drop on textarea
+    promptInput.addEventListener('dragover', handleDragOver);
+    promptInput.addEventListener('dragleave', handleDragLeave);
+    promptInput.addEventListener('drop', handleDrop);
+}
+
+// Handle file selection (from click or drop)
+function handleFileSelect(e) {
+    const files = e.target.files;
+    if (files.length > 0) {
+        processFile(files[0]);
+    }
+}
+
+// Handle drag over
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.add('drag-over');
+}
+
+// Handle drag leave
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.remove('drag-over');
+}
+
+// Handle drop
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    promptInput.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        processFile(files[0]);
+    }
+}
+
+// Process a single file
+function processFile(file) {
+    // Validate file type
+    const extension = '.' + file.name.split('.').pop().toLowerCase();
+    const acceptedExtensions = ['.txt', '.md', '.json', '.csv', '.yaml', '.yml', '.py', '.js', '.html'];
+    
+    if (!acceptedExtensions.includes(extension)) {
+        alert(`File type not supported: ${file.name}`);
+        return;
+    }
+    
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+        alert(`File too large (max 10MB): ${file.name}`);
+        return;
+    }
+    
+    // Read file content
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        const content = e.target.result;
+        
+        // Store file and content
+        selectedFile = file;
+        fileContent = content;
+        
+        // Clear textarea and show file info
+        promptInput.value = '';
+        showSelectedFile(file);
+        
+        alert(`File loaded: ${file.name}`);
+    };
+    
+    reader.onerror = function() {
+        alert(`Error reading file: ${file.name}`);
+    };
+    
+    reader.readAsText(file);
+}
+
+// Show selected file info
+function showSelectedFile(file) {
+    const container = document.getElementById('selectedFileContainer');
+    const fileName = document.getElementById('selectedFileName');
+    const fileSize = document.getElementById('selectedFileSize');
+    
+    if (!container || !fileName || !fileSize) return;
+    
+    fileName.textContent = file.name;
+    fileSize.textContent = formatFileSize(file.size);
+    container.style.display = 'flex';
+}
+
+// Remove selected file
+function removeSelectedFile() {
+    selectedFile = null;
+    fileContent = '';
+    
+    const container = document.getElementById('selectedFileContainer');
+    if (container) {
+        container.style.display = 'none';
+    }
+    
+    // Clear file input
+    if (fileInput) {
+        fileInput.value = '';
+    }
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Update analyzePrompt to handle file content
+async function analyzePrompt() {
+    let prompt = promptInput.value.trim();
+    
+    // Use file content if a file is selected
+    if (selectedFile && fileContent) {
+        prompt = fileContent.trim();
+    }
+    
+    if (!prompt) {
+        alert('Please enter a prompt or upload a file to analyze.');
+        return;
+    }
+    
+    // Show loading
+    loadingDiv.classList.remove('hidden');
+    analyzeBtn.disabled = true;
+    
+    try {
+        // Call the API
+        const response = await fetch('/api/v1/predict', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prompt: prompt })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Display results
+        displayResults(data);
+        
+    } catch (error) {
+        console.error('Error analyzing prompt:', error);
+        alert('Error analyzing prompt. Please try again.');
+    } finally {
+        // Hide loading
+        loadingDiv.classList.add('hidden');
+        analyzeBtn.disabled = false;
+    }
+}
+
+// Update clearPrompt to also clear file
+function clearPrompt() {
+    promptInput.value = '';
+    
+    // Clear selected file
+    removeSelectedFile();
+    
+    // Hide results
+    resultsDiv.style.display = 'none';
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Check API health
+    checkHealth();
+    
+    // Set up event listeners
+    promptInput.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+            analyzePrompt();
+        }
+    });
+    
+    // Initialize file upload
+    initFileUpload();
+});
+
+// Global variables for file upload
+let selectedFile = null;
+let fileContent = '';

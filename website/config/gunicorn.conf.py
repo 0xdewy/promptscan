@@ -19,7 +19,7 @@ timeout = 30
 keepalive = 5
 
 # Worker process naming
-proc_name = "prompt_detective_x402"
+proc_name = "promptscan_x402"
 
 # Logging
 accesslog = "-"
