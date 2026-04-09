@@ -24,7 +24,7 @@ def load_from_parquet(parquet_path: str = "data/prompts.parquet") -> pd.DataFram
     try:
         import importlib.resources
 
-        with importlib.resources.path("prompt_detective", "data") as data_dir:
+        with importlib.resources.path("promptscan", "data") as data_dir:
             package_path = data_dir / "prompts.parquet"
             if package_path.exists():
                 df = pd.read_parquet(package_path)

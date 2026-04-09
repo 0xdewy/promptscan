@@ -1,6 +1,6 @@
 [project]
 name = "promptscan"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-powered prompt injection detective - detect and analyze suspicious prompts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -48,12 +48,12 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["promptscan", "promptscan.models", "promptscan.utils", "promptscan.ensemble", "promptscan.processors", "promptscan.training", "promptscan.training.strategies"]
+packages = ["promptscan", "promptscan.models", "promptscan.models.checkpoints", "promptscan.utils", "promptscan.ensemble", "promptscan.processors", "promptscan.training", "promptscan.training.strategies"]
 include-package-data = true
 
 [tool.setuptools.package-data]
 "promptscan.models" = ["checkpoints/*.pt"]
-"*" = ["*.pt", "*.parquet", "*.csv", "*.db", "*.yaml", "*.txt"]
+"*" = ["*.parquet", "*.csv", "*.db", "*.yaml", "*.txt"]
 
 [project.optional-dependencies]
 dev = [

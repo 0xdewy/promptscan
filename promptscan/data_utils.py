@@ -48,9 +48,9 @@ def get_package_data_dir() -> Optional[Path]:
 
     # 2. Try development directory (for editable installs)
     try:
-        import prompt_detective
+        import promptscan
 
-        package_dir = Path(prompt_detective.__file__).parent
+        package_dir = Path(promptscan.__file__).parent
         # Check parent directory for data
         project_root = package_dir.parent.parent
         data_dir = project_root / "data"
@@ -67,7 +67,7 @@ def get_package_models_dir() -> Optional[Path]:
     try:
         import importlib.resources
 
-        with importlib.resources.path("prompt_detective", "models") as models_dir:
+        with importlib.resources.path("promptscan", "models") as models_dir:
             if models_dir.exists():
                 return models_dir
     except (ImportError, FileNotFoundError):

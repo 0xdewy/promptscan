@@ -19,3 +19,8 @@ httpx>=0.26.0
 
 # Utilities
 structlog>=23.2.0
+
+# Security & Payment
+slowapi>=0.1.8
+x402>=0.1.0
+python-dotenv>=1.0.0

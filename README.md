@@ -1,4 +1,4 @@
-# Prompt Detective
+# PromptScan
 
 **AI-powered prompt injection detection with transparent ensemble voting**
 
@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/promptscan.svg)](https://pypi.org/project/promptscan/)
 
-Detect malicious prompt injection attacks with a production-ready ensemble of CNN, LSTM, and Transformer models. See exactly how each model votes with transparent confidence scores.
+Detect malicious prompt injection attacks with a production-ready ensemble of CNN and LSTM models. See exactly how each model votes with transparent confidence scores.
 
 ```bash
 # Install and run in 30 seconds
@@ -14,23 +14,24 @@ uv pip install promptscan
 promptscan predict "Ignore all previous instructions"
 ```
 
-## Why Prompt Detective?
+## Why PromptScan?
 
-Prompt injections are emerging security threats where malicious users bypass AI system safeguards. Prompt Detective provides:
+Prompt injections are emerging security threats where malicious users bypass AI system safeguards. PromptScan provides:
 
-- **🔬 Multi-model ensemble** – Combines CNN speed, LSTM sequence understanding, and Transformer accuracy
+- **🔬 Multi-model ensemble** – Combines CNN speed with LSTM sequence understanding
 - **📊 Transparent voting** – See individual model predictions and confidence scores
 - **⚡ Production-ready** – Clean CLI, parallel inference, and self-contained models
-- **📚 Comprehensive dataset** – 17,195 curated examples with 97% validation accuracy
+- **📚 Comprehensive dataset** – 17,195 curated examples
 
 ## Features
 
-- **Ensemble-first architecture** – Default mode combines CNN, LSTM, and Transformer models
-- **Parallel inference** – All models run concurrently for ~50ms prediction time
+- **Ensemble-first architecture** – Default mode combines CNN and LSTM models
+- **Parallel inference** – Models run concurrently for fast prediction time
 - **Multiple voting strategies** – Majority (default), weighted, confidence-based, and soft voting
 - **Flexible input** – Analyze text, files, directories, or URLs
 - **Clean output** – Suppressed warnings and intuitive formatting
 - **Self-contained** – No external API calls, vocabulary stored in checkpoints
+- **PyPI ready** – Small package size with included models
 
 ## Quick Start
 
@@ -54,9 +55,8 @@ promptscan predict "Ignore all previous instructions"
 # Individual model predictions:
 #   - cnn: INJECTION (99.86%)
 #   - lstm: SAFE (97.47%)
-#   - transformer: INJECTION (99.85%)
 # 
-# Ensemble result: INJECTION (99.85%)
+# Ensemble result: INJECTION (99.86%)
 
 # Analyze files and directories
 promptscan predict --file input.txt
@@ -65,7 +65,6 @@ promptscan predict --dir ./prompts/ --summary
 # Use different model types
 promptscan predict --model-type cnn "Test text"
 promptscan predict --model-type lstm "Test text"
-promptscan predict --model-type transformer "Test text"
 ```
 
 ## Installation Options
@@ -88,8 +87,8 @@ uv pip install -e ".[dev]"
 uv run pytest tests/
 
 # Format code
-uv run black prompt_detective/ scripts/ tests/
-uv run ruff check --fix prompt_detective/ scripts/ tests/
+uv run black promptscan/ scripts/ tests/
+uv run ruff check --fix promptscan/ scripts/ tests/
 ```
 
 ## Usage Examples
@@ -102,7 +101,6 @@ promptscan train
 
 # Train specific model types
 promptscan train --model-type lstm
-promptscan train --model-type transformer
 
 # Customize training parameters
 promptscan train --epochs 10 --batch-size 32 --learning-rate 0.001
@@ -140,7 +138,7 @@ promptscan export --format csv --output prompts.csv
 ## Python API
 
 ```python
-from prompt_detective import UnifiedDetector
+from promptscan import UnifiedDetector
 
 # Load detector (ensemble is default)
 detector = UnifiedDetector(model_type="ensemble")
@@ -164,20 +162,20 @@ if "individual_predictions" in result:
 │                    Input Text                           │
 └─────────────────┬─────────────────┬─────────────────────┘
                   │                 │
-          ┌───────▼──────┐  ┌───────▼──────┐  ┌─────────────┐
-          │     CNN      │  │     LSTM     │  │ Transformer │
-          │   (Fast)     │  │ (Sequential) │  │ (Accurate)  │
-          └───────┬──────┘  └───────┬──────┘  └──────┬──────┘
-                  │                 │                 │
-          ┌───────▼─────────────────▼─────────────────▼──────┐
-          │              Voting Strategy                      │
-          │        (Majority/Weighted/Confidence/Soft)        │
-          └───────────────────────┬───────────────────────────┘
-                                  │
-                          ┌───────▼──────┐
-                          │  Final       │
-                          │  Prediction  │
-                          └──────────────┘
+          ┌───────▼──────┐  ┌───────▼──────┐
+          │     CNN      │  │     LSTM     │
+          │   (Fast)     │  │ (Sequential) │
+          └───────┬──────┘  └───────┬──────┘
+                  │                 │
+          ┌───────▼─────────────────▼──────┐
+          │        Voting Strategy         │
+          │ (Majority/Weighted/Confidence) │
+          └─────────────────┬──────────────┘
+                            │
+                    ┌───────▼──────┐
+                    │  Final       │
+                    │  Prediction  │
+                    └──────────────┘
 ```
 
 ### Model Details
@@ -186,8 +184,9 @@ if "individual_predictions" in result:
 |-------|-------------|------------|----------|----------------|
 | **CNN** | Convolutional Neural Network | 2.7M | Local pattern detection | ~10ms |
 | **LSTM** | Bidirectional LSTM | 3.3M | Sequential understanding | ~15ms |
-| **Transformer** | DistilBERT fine-tuned | 67M | Contextual accuracy | ~25ms |
-| **Ensemble** | All three models | 73M | Combined robustness | ~50ms |
+| **Ensemble** | Both models | 6.0M | Combined robustness | ~25ms |
+
+**Note**: Transformer model (67M) is available for local use but excluded from PyPI package due to size limits.
 
 ### Voting Strategies
 
@@ -198,18 +197,18 @@ if "individual_predictions" in result:
 
 ## Dataset
 
-Prompt Detective is trained on a comprehensive dataset of 17,195 examples:
+PromptScan is trained on a comprehensive dataset of 17,195 examples:
 
 - **10,833 injection prompts** (63.0%)
 - **6,362 safe prompts** (37.0%)
 - **Multilingual**: English (primary) and Spanish (secondary)
 - **Sources**: Curated from multiple security research projects
 - **Split**: 80% train, 10% validation, 10% test
-- **Accuracy**: 97% validation accuracy on ensemble
+- **Accuracy**: High validation accuracy on ensemble
 
 ## Batch Import and GitHub Integration
 
-Prompt Detective now supports batch imports from multiple sources to enhance the dataset and address false positives.
+PromptScan now supports batch imports from multiple sources to enhance the dataset and address false positives.
 
 ### Importing Safe Documentation
 
@@ -369,7 +368,7 @@ promptscan train --model-type ensemble
 ### Project Structure
 
 ```
-prompt_detective/
+promptscan/
 ├── __init__.py              # Package initialization
 ├── cli.py                   # Command-line interface
 ├── unified_detector.py      # Unified detector interface
@@ -388,13 +387,13 @@ prompt_detective/
 
 ```bash
 # Build package
-uv build
+python -m build
 
-# Build wheel only
-uv build --wheel
+# Check package
+twine check dist/*
 
 # Publish to PyPI
-uv publish
+twine upload dist/*
 ```
 
 ## Requirements
@@ -402,8 +401,8 @@ uv publish
 - Python 3.8+
 - PyTorch 2.0.0+
 - pandas 2.0.0+
-- transformers 4.30.0+ (for Transformer model)
-- tokenizers 0.13.0+ (for Transformer model)
+- transformers 4.30.0+ (optional, for Transformer model training)
+- tokenizers 0.13.0+ (optional, for Transformer model training)
 
 ## License
 
@@ -427,4 +426,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-**Prompt Detective** – Transparent, robust prompt injection detection for AI security.
+**PromptScan** – Transparent, robust prompt injection detection for AI security.

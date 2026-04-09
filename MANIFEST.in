@@ -17,10 +17,11 @@ include config/*.py
 include tests/fixtures/*.txt
 
 # Recursive include for Python source files
-recursive-include prompt_detective *.py
-recursive-include prompt_detective/models *.py
-recursive-include prompt_detective/utils *.py
-recursive-include tests *.py
+recursive-include promptscan *.py
+recursive-include promptscan/models *.py
+recursive-include promptscan/utils *.py
+# Exclude tests from distribution
+# recursive-include tests *.py
 
 # Exclude development and cache files
 exclude .gitignore

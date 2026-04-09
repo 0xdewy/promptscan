@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-__version__ = VERSION = "0.1.0"
+__version__ = VERSION = "0.1.1"
 
 
 def get_model_path(model_name: str) -> Path:

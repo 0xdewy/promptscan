@@ -9,30 +9,184 @@ import time
 import traceback
 import json
 import tempfile
+import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    Depends,
+    Header,
+    Request,
+)
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 app = FastAPI(
     title="promptscan API",
     version="1.0.0",
-    description="Prompt injection detection",
+    description="Prompt injection detection with x402 payment",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
 
-# CORS middleware
+# Rate limiting configuration
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware - restrict to frontend domain in production
+cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
+if cors_origins == ["*"]:
+    # In production, you should set specific origins
+    print(
+        "⚠️  WARNING: CORS is set to allow all origins (*). For production, set CORS_ORIGINS in .env"
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "PAYMENT",
+        "PAYMENT-REQUIRED",
+        "X-API-Key",
+    ],
 )
+
+# Add rate limiting middleware
+app.add_middleware(SlowAPIMiddleware)
+
+# Import and setup x402 middleware
+try:
+    from x402_middleware import setup_x402_middleware
+
+    app = setup_x402_middleware(app)
+    print("✅ x402 payment middleware initialized")
+except ImportError as e:
+    print(f"⚠️  x402 middleware not available: {e}")
+    print("⚠️  Payment verification will be disabled")
+except Exception as e:
+    print(f"⚠️  Failed to setup x402 middleware: {e}")
+    print("⚠️  Payment verification will be disabled")
+
+# Import and setup security headers middleware
+try:
+    from security_middleware import setup_security_headers
+
+    app = setup_security_headers(app)
+    print("✅ Security headers middleware initialized")
+except ImportError as e:
+    print(f"⚠️  Security headers middleware not available: {e}")
+except Exception as e:
+    print(f"⚠️  Failed to setup security headers middleware: {e}")
+
+
+# API Key authentication for frontend-only endpoints
+FRONTEND_API_KEY = os.getenv("FRONTEND_API_KEY")
+if not FRONTEND_API_KEY:
+    # Generate a secure API key if not set
+    FRONTEND_API_KEY = secrets.token_urlsafe(32)
+    print(
+        f"⚠️  FRONTEND_API_KEY not set in .env, generated temporary key: {FRONTEND_API_KEY[:16]}..."
+    )
+    print("⚠️  For production, set FRONTEND_API_KEY in .env file")
+
+
+def _is_same_origin_request(request: Request, origin: str, referer: str) -> bool:
+    """Check if request is from same origin as the server."""
+    # Get server host
+    server_host = request.url.hostname
+    server_port = request.url.port or 8000
+
+    # Check origin header
+    if origin:
+        try:
+            from urllib.parse import urlparse
+
+            origin_parsed = urlparse(origin)
+            origin_host = origin_parsed.hostname
+            origin_port = origin_parsed.port or (
+                443 if origin_parsed.scheme == "https" else 80
+            )
+
+            # Compare host and port
+            if origin_host == server_host and origin_port == server_port:
+                return True
+        except:
+            pass
+
+    # Check referer header
+    if referer:
+        try:
+            from urllib.parse import urlparse
+
+            referer_parsed = urlparse(referer)
+            referer_host = referer_parsed.hostname
+            referer_port = referer_parsed.port or (
+                443 if referer_parsed.scheme == "https" else 80
+            )
+
+            # Compare host and port
+            if referer_host == server_host and referer_port == server_port:
+                return True
+        except:
+            pass
+
+    # Check if request is from localhost (development)
+    if server_host in ["localhost", "127.0.0.1", "0.0.0.0"]:
+        return True
+
+    return False
+
+
+async def verify_frontend_api_key(
+    request: Request,
+    x_api_key: str = Header(None),
+    origin: str = Header(None),
+    referer: str = Header(None),
+):
+    """Verify frontend API key for protected endpoints.
+
+    Allows:
+    1. Requests with valid API key
+    2. Same-origin requests (frontend from same domain)
+    3. Requests from allowed CORS origins (in development)
+    """
+    # Check if this is a same-origin request (frontend from same domain)
+    is_same_origin = _is_same_origin_request(request, origin, referer)
+
+    if is_same_origin:
+        # Allow same-origin requests without API key
+        return True
+
+    # For cross-origin requests, require API key
+    if not FRONTEND_API_KEY:
+        raise HTTPException(status_code=500, detail="API key configuration error")
+
+    if not x_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required for cross-origin requests",
+            headers={"WWW-Authenticate": "X-API-Key"},
+        )
+
+    if not secrets.compare_digest(x_api_key, FRONTEND_API_KEY):
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return True
 
 
 # Pydantic model for request body
@@ -506,14 +660,16 @@ async def frontend():
 
 
 @app.post("/api/v1/predict")
-async def predict(request: PromptRequest) -> Dict[str, Any]:
+@limiter.limit("100/hour")  # Rate limit predictions
+async def predict(request: Request, prompt_request: PromptRequest) -> Dict[str, Any]:
     """
     Production prediction endpoint using real ensemble models.
+    PAYMENT REQUIRED: x402 payment verification needed.
 
     Returns individual model predictions and ensemble consensus.
     """
     try:
-        prompt_text = request.prompt
+        prompt_text = prompt_request.prompt
 
         # Validate input
         if not prompt_text or not prompt_text.strip():
@@ -562,9 +718,15 @@ async def predict(request: PromptRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/v1/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
+@limiter.limit("10/hour")  # Rate limit file uploads
+async def upload_files(
+    request: Request,
+    files: List[UploadFile] = File(...),
+    api_key_verified: bool = Depends(verify_frontend_api_key),
+):
     """
     Upload and analyze multiple files for prompt injection detection.
+    FRONTEND-ONLY ENDPOINT: Requires valid API key.
 
     Supports: .txt, .md, .json, .csv, .yaml, .yml, .py, .js, .html
     Max file size: 10MB per file, 100MB total
@@ -638,21 +800,25 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
 
 @app.post("/api/v1/predict/batch")
-async def batch_predict(request: BatchPredictionRequest):
+@limiter.limit("10/hour")  # Lower limit for batch predictions
+async def batch_predict(request: Request, batch_request: BatchPredictionRequest):
     """
     Batch prediction endpoint for multiple prompts.
+    PAYMENT REQUIRED: x402 payment verification needed.
 
     Accepts a list of prompts and optional source identifiers.
     """
     try:
-        if not request.prompts:
+        if not batch_request.prompts:
             raise HTTPException(status_code=400, detail="No prompts provided")
 
-        if len(request.prompts) > 100:
+        if len(batch_request.prompts) > 100:
             raise HTTPException(status_code=400, detail="Too many prompts (max 100)")
 
         # Run batch prediction
-        result = inference_engine.predict_batch(request.prompts, request.sources)
+        result = inference_engine.predict_batch(
+            batch_request.prompts, batch_request.sources
+        )
         return result
 
     except HTTPException:
@@ -724,9 +890,11 @@ async def stats():
 
 
 @app.post("/api/v1/feedback")
-async def submit_feedback(feedback: FeedbackRequest):
+@limiter.limit("50/hour")  # Rate limit feedback submissions
+async def submit_feedback(request: Request, feedback: FeedbackRequest):
     """
     Accept user feedback on model predictions.
+    FREE ENDPOINT: No payment required for feedback.
 
     Expected JSON:
     {

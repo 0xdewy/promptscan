@@ -6,9 +6,9 @@ import os
 
 import pytest
 
-from prompt_detective.detector import SimplePromptDetector
-from prompt_detective.parquet_store import ParquetDataStore
-from prompt_detective.utils.text_processor import SimpleTextProcessor
+from promptscan.detector import SimplePromptDetector
+from promptscan.parquet_store import ParquetDataStore
+from promptscan.utils.text_processor import SimpleTextProcessor
 
 
 def test_text_processor():
@@ -98,7 +98,7 @@ def test_parquet_store():
 def test_detector_predict():
     """Test detector predictions."""
     # This test requires a trained model
-    from prompt_detective import get_model_path
+    from promptscan import get_model_path
 
     model_path = get_model_path("best_model.pt")
 
