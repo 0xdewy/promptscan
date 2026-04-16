@@ -12,8 +12,8 @@ DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
 TESTS_DIR = BASE_DIR / "tests"
 
-# File paths
-MODEL_PATH = MODELS_DIR / "best_model.pt"
+# File paths (base name without extension for safetensors format)
+MODEL_PATH = MODELS_DIR / "best_model"
 
 # Parquet data paths
 # NOTE: Static split files are deprecated and have been consolidated

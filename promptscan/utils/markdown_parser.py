@@ -5,7 +5,6 @@ Provides functions to extract plain text from markdown files for prompt injectio
 """
 
 import re
-from typing import Optional
 
 
 def parse_markdown_to_text(markdown_content: str, use_library: bool = True) -> str:

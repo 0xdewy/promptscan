@@ -294,7 +294,7 @@ class BaseTrainer(ABC):
         # Add precision, recall, F1 if we have predictions and sklearn is available
         if len(all_predictions) > 0:
             try:
-                from sklearn.metrics import precision_score, recall_score, f1_score
+                from sklearn.metrics import f1_score, precision_score, recall_score
 
                 precision = precision_score(
                     all_labels, all_predictions, average="binary", zero_division=0

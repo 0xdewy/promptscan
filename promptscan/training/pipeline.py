@@ -6,17 +6,15 @@ Unified training pipeline for all model types.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import torch
 from torch.utils.data import DataLoader
 
 from ..config import AppConfig, DataConfig, ModelConfig
 from ..parquet_store import ParquetDataStore
 from .base_trainer import TrainingStrategy
 from .data_loader import (
-    create_dataloaders,
-    load_data_from_parquet,
-    print_data_stats,
     TextDataset,
+    create_dataloaders,
+    print_data_stats,
 )
 
 
@@ -119,7 +117,7 @@ def train_model(
     test_data = convert_to_training_format(splits["test"])
 
     # Print split statistics (more detailed than print_data_stats)
-    print(f"\nSplit Statistics:")
+    print("\nSplit Statistics:")
     print(f"  Training: {len(train_data)} samples")
     print(f"  Validation: {len(val_data)} samples")
     print(f"  Test: {len(test_data)} samples")
@@ -173,7 +171,7 @@ def train_model(
     results = _evaluate_test_set(trainer, test_loader, results)
 
     # Save model
-    model_filename = f"{model_type}_best.pt"
+    model_filename = f"{model_type}_best"
     model_path = output_dir / model_filename
 
     trainer.save_model(
@@ -214,7 +212,7 @@ def train_model_from_data(
         model_config: Model configuration (uses defaults if None)
         output_dir: Directory to save model (default: models/)
         resume: Whether to resume from existing checkpoint
-        checkpoint_path: Path to checkpoint for resuming (defaults to output_dir/{model_type}_best.pt)
+        checkpoint_path: Path to checkpoint for resuming (defaults to output_dir/{model_type}_best)
 
     Returns:
         Tuple of (model, processor, training_results)
@@ -237,7 +235,7 @@ def train_model_from_data(
 
     # Determine checkpoint path for resuming
     if checkpoint_path is None:
-        checkpoint_path = str(output_dir / f"{model_type}_best.pt")
+        checkpoint_path = str(output_dir / f"{model_type}_best")
 
     # Load training strategy
     strategy = get_training_strategy(model_type)
@@ -324,7 +322,7 @@ def train_model_from_data(
     results = _evaluate_test_set(trainer, test_loader, results)
 
     # Save model
-    model_filename = f"{model_type}_best.pt"
+    model_filename = f"{model_type}_best"
     model_path = output_dir / model_filename
 
     trainer.save_model(

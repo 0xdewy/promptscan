@@ -5,10 +5,9 @@ Supports local files, directories, and GitHub repositories.
 """
 
 import time
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 
 @dataclass
@@ -378,7 +377,7 @@ class BatchImporter:
 
     def _print_import_summary(self, stats: ImportStats, dry_run: bool = False):
         """Print import summary statistics."""
-        print(f"\n📊 IMPORT COMPLETE")
+        print("\n📊 IMPORT COMPLETE")
         print(f"   Total files: {stats.total_files}")
         print(f"   Processed: {stats.processed}")
         print(f"   Added: {stats.added}")

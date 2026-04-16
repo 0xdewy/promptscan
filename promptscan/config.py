@@ -134,11 +134,11 @@ class DataConfig:
 class InferenceConfig:
     """Configuration for inference."""
 
-    # Model paths
-    cnn_model: Path = field(default_factory=lambda: Path("models/best_model.pt"))
-    lstm_model: Path = field(default_factory=lambda: Path("models/lstm_best.pt"))
+    # Model paths (base names without extension for safetensors format)
+    cnn_model: Path = field(default_factory=lambda: Path("models/best_model"))
+    lstm_model: Path = field(default_factory=lambda: Path("models/lstm_best"))
     transformer_model: Path = field(
-        default_factory=lambda: Path("models/transformer_best.pt")
+        default_factory=lambda: Path("models/transformer_best")
     )
 
     # Inference parameters

@@ -2679,9 +2679,10 @@ wheels = [
 
 [[package]]
 name = "promptscan"
-version = "0.1.0"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2689,6 +2690,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pyarrow" },
     { name = "requests" },
+    { name = "safetensors" },
     { name = "tokenizers" },
     { name = "torch" },
     { name = "transformers" },
@@ -2737,6 +2739,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'deployment'", specifier = ">=0.104.1" },
     { name = "gunicorn", marker = "extra == 'deployment'", specifier = ">=21.2.0" },
     { name = "httpx", marker = "extra == 'deployment'", specifier = ">=0.26.0" },
+    { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "markdown", marker = "extra == 'markdown'", specifier = ">=3.5.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.4.0" },
     { name = "numpy", specifier = ">=1.24.0" },
@@ -2747,6 +2750,7 @@ requires-dist = [
     { name = "python-multipart", marker = "extra == 'deployment'", specifier = ">=0.0.6" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "safetensors", specifier = ">=0.4.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7.0.0" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=1.3.0" },
     { name = "structlog", marker = "extra == 'deployment'", specifier = ">=23.2.0" },
