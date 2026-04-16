@@ -130,9 +130,9 @@ class EnsembleDetector:
         Load ensemble from pretrained models in directory.
 
         Looks for:
-            - cnn_best.pt
-            - lstm_best.pt
-            - transformer_best.pt
+            - cnn_best.safetensors + cnn_best.config.json
+            - lstm_best.safetensors + lstm_best.config.json
+            - transformer_best.safetensors + transformer_best.config.json
         """
         if model_dir is None:
             # Use package models directory
@@ -147,20 +147,25 @@ class EnsembleDetector:
         model_dir.mkdir(parents=True, exist_ok=True)
 
         model_configs = []
-        expected_files = [
-            ("cnn", "cnn_best.pt"),
-            ("lstm", "lstm_best.pt"),
-            ("transformer", "transformer_best.pt"),
+        expected_models = [
+            ("cnn", "cnn_best"),
+            ("lstm", "lstm_best"),
+            ("transformer", "transformer_best"),
         ]
 
-        for model_type, filename in expected_files:
-            model_path = model_dir / filename
-            if model_path.exists():
+        for model_type, model_name in expected_models:
+            # Check for safetensors file
+            safetensors_path = model_dir / f"{model_name}.safetensors"
+            config_path = model_dir / f"{model_name}.config.json"
+
+            if safetensors_path.exists() and config_path.exists():
                 weight = 0.5 if model_type == "transformer" else 0.25
                 model_configs.append(
                     {
                         "type": model_type,
-                        "checkpoint_path": str(model_path),
+                        "checkpoint_path": str(
+                            model_dir / model_name
+                        ),  # Base name without extension
                         "weight": weight,
                     }
                 )
@@ -168,11 +173,15 @@ class EnsembleDetector:
         if not model_configs:
             raise FileNotFoundError(
                 f"No model checkpoints found in {model_dir}\n"
-                f"Expected files: cnn_best.pt, lstm_best.pt, transformer_best.pt\n\n"
+                f"Expected files (safetensors format):\n"
+                f"  - cnn_best.safetensors + cnn_best.config.json\n"
+                f"  - lstm_best.safetensors + lstm_best.config.json\n"
+                f"  - transformer_best.safetensors + transformer_best.config.json\n\n"
                 f"To fix:\n"
                 f"  1. Train individual models: promptscan train --model-type cnn|lstm|transformer\n"
                 f"  2. Specify custom model directory with --model-dir\n"
-                f"  3. Use single model instead of ensemble: --model-type cnn|lstm|transformer"
+                f"  3. Use single model instead of ensemble: --model-type cnn|lstm|transformer\n"
+                f"  4. Convert old .pt files using: promptscan convert-model old.pt new.safetensors"
             )
 
         return cls(model_configs, voting_strategy, device)

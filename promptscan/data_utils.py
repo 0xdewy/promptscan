@@ -155,7 +155,9 @@ def ensure_data_files(dest_dir: Optional[Path] = None) -> Tuple[Path, Path, Path
     return tuple(dest_paths)
 
 
-def ensure_model_file(dest_dir: Optional[Path] = None, model_type: str = "cnn") -> Path:
+def ensure_model_file(
+    dest_dir: Optional[Path] = None, model_type: str = "cnn"
+) -> Optional[Path]:
     """
     Ensure model file is available locally.
 
@@ -164,37 +166,50 @@ def ensure_model_file(dest_dir: Optional[Path] = None, model_type: str = "cnn") 
         model_type: Type of model ("cnn", "lstm", "transformer")
 
     Returns:
-        Path to model file
+        Path to model base file (without extension) or None if not available
     """
     if dest_dir is None:
         dest_dir = Path.cwd() / "models"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine filename based on model type
+    # Determine base filename based on model type (without extension for safetensors format)
     if model_type == "cnn":
-        filename = "best_model.pt"
+        base_filename = "best_model"
     elif model_type == "lstm":
-        filename = "lstm_best.pt"
+        base_filename = "lstm_best"
     elif model_type == "transformer":
-        filename = "transformer_best.pt"
+        base_filename = "transformer_best"
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
-    dest_path = dest_dir / filename
+    # Check if model already exists locally (check for both safetensors and config files)
+    safetensors_path = dest_dir / f"{base_filename}.safetensors"
+    config_path = dest_dir / f"{base_filename}.config.json"
 
-    # Check if model already exists
-    if dest_path.exists():
-        return dest_path
+    if safetensors_path.exists() and config_path.exists():
+        return dest_dir / base_filename  # Return base path without extension
 
     # Try to copy from package
     package_models_dir = get_package_models_dir()
     if package_models_dir:
-        source_path = package_models_dir / filename
-        if source_path.exists():
-            shutil.copy2(source_path, dest_path)
-            print(f"Copied {model_type} model to {dest_path}")
-            return dest_path
+        source_files = [
+            package_models_dir / f"{base_filename}.safetensors",
+            package_models_dir / f"{base_filename}.config.json",
+        ]
+
+        copied_files = []
+        for source_file in source_files:
+            if source_file.exists():
+                dest_file = dest_dir / source_file.name
+                shutil.copy2(source_file, dest_file)
+                copied_files.append(dest_file.name)
+
+        if copied_files:
+            print(
+                f"Copied {model_type} model files to {dest_dir}: {', '.join(copied_files)}"
+            )
+            return dest_dir / base_filename  # Return base path without extension
 
     # Model not available
     warnings.warn(
@@ -203,7 +218,7 @@ def ensure_model_file(dest_dir: Optional[Path] = None, model_type: str = "cnn") 
         RuntimeWarning,
         stacklevel=2,
     )
-    return dest_path
+    return None
 
 
 def get_default_data_paths() -> Tuple[Path, Path, Path]:
@@ -244,17 +259,20 @@ def get_default_model_path() -> Path:
     Get default model path, using package model if available.
 
     Returns:
-        Path to model file
+        Path to model base file (without extension)
     """
-    # First try package model
+    # First try package model (safetensors format)
     package_models_dir = get_package_models_dir()
     if package_models_dir:
-        model_path = package_models_dir / "best_model.pt"
-        if model_path.exists():
-            return model_path
+        safetensors_path = package_models_dir / "best_model.safetensors"
+        config_path = package_models_dir / "best_model.config.json"
+        if safetensors_path.exists() and config_path.exists():
+            return (
+                package_models_dir / "best_model"
+            )  # Return base path without extension
 
     # Fall back to local models directory
-    return Path.cwd() / "models" / "best_model.pt"
+    return Path.cwd() / "models" / "best_model"
 
 
 def list_available_data() -> dict:
@@ -268,7 +286,7 @@ def list_available_data() -> dict:
 
     package_models_dir = get_package_models_dir()
     if package_models_dir:
-        for file in package_models_dir.glob("*.pt"):
+        for file in package_models_dir.glob("*.safetensors"):
             result["models"].append(file.name)
 
     return result

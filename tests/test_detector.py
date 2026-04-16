@@ -100,7 +100,7 @@ def test_detector_predict():
     # This test requires a trained model
     from promptscan import get_model_path
 
-    model_path = get_model_path("best_model.pt")
+    model_path = get_model_path("best_model")
 
     if not os.path.exists(model_path):
         pytest.skip("Model file not found, skipping prediction tests")

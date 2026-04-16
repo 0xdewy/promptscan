@@ -35,7 +35,7 @@ class UnifiedDetector:
             model_dir = kwargs.get("model_dir", model_path)
             if model_dir is None:
                 # Use package models directory - get it from get_model_path
-                cnn_path = get_model_path("cnn_best.pt")
+                cnn_path = get_model_path("cnn_best")
                 model_dir = os.path.dirname(str(cnn_path))
             self.detector = EnsembleDetector.from_pretrained(
                 model_dir=model_dir,
@@ -46,14 +46,14 @@ class UnifiedDetector:
             if model_path is None:
                 # Default model paths
                 if model_type == "cnn":
-                    model_path = str(get_model_path("cnn_best.pt"))
+                    model_path = str(get_model_path("cnn_best"))
                 elif model_type == "lstm":
-                    model_path = str(get_model_path("lstm_best.pt"))
+                    model_path = str(get_model_path("lstm_best"))
                 elif model_type == "transformer":
-                    model_path = str(get_model_path("transformer_best.pt"))
+                    model_path = str(get_model_path("transformer_best"))
 
-            if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Model file not found: {model_path}")
+            # get_model_path() already raises FileNotFoundError if model files don't exist
+            # so we don't need to check os.path.exists() here
 
             # Load appropriate model
             if model_type == "cnn":

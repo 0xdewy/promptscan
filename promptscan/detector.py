@@ -8,9 +8,8 @@ import argparse
 import os
 import pickle
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,6 +20,7 @@ from .data_utils import get_default_data_paths
 from .models.cnn_model import SimpleCNN
 from .processors.word_processor import WordProcessor
 from .training.data_loader import load_data_from_parquet
+from .utils.colors import Colors
 from .utils.data_loader import PromptDataset
 from .utils.device import get_device
 
@@ -118,7 +118,7 @@ class SimpleTrainer:
                         "val_acc": val_acc,
                         "epoch": epoch + 1,
                     },
-                    str(get_model_path("best_model.pt")),
+                    str(get_model_path("best_model")),
                 )
                 print(f"  ✓ Saved best model (val_acc: {val_acc:.4f})")
             else:
@@ -145,7 +145,7 @@ class SimplePromptDetector:
         )
         self.device = get_device(device)
         if model_path is None:
-            model_path = str(get_model_path("best_model.pt"))
+            model_path = str(get_model_path("best_model"))
         self.load_model(model_path)
 
     def load_model(self, model_path):
@@ -270,9 +270,10 @@ def train_model(
     # Handle consolidated prompts.parquet file
     if train_path == "data/prompts.parquet" and (val_path is None or test_path is None):
         print("⚠️  Using consolidated prompts.parquet - creating dynamic splits...")
-        from .parquet_store import ParquetDataStore
-        from sklearn.model_selection import train_test_split
         import pandas as pd
+        from sklearn.model_selection import train_test_split
+
+        from .parquet_store import ParquetDataStore
 
         # Load consolidated data
         store = ParquetDataStore(train_path)
@@ -344,7 +345,7 @@ def train_model(
 
     # Save model
     if model_path is None:
-        model_path = str(get_model_path("best_model.pt"))
+        model_path = str(get_model_path("best_model"))
     model.save(
         model_path,
         processor,
@@ -459,11 +460,10 @@ def analyze_directory(detector, directory_path, show_summary=False, verbose=Fals
     """Analyze all text files (.txt, .md, .markdown) in directory with beautiful output."""
     import glob
     import time
-    from pathlib import Path
 
     # Try to import markdown parser
     try:
-        from .utils.markdown_parser import read_and_parse_file, get_file_type_display
+        from .utils.markdown_parser import get_file_type_display, read_and_parse_file
 
         has_markdown_parser = True
     except ImportError:
@@ -557,10 +557,10 @@ def analyze_directory(detector, directory_path, show_summary=False, verbose=Fals
         # Color and icon based on prediction
         if result["prediction"] == "INJECTION":
             icon = "🔴"
-            status = "INJECTION"
+            status = Colors.colored("INJECTION", Colors.RED)
         else:
             icon = "🟢"
-            status = "SAFE"
+            status = Colors.colored("SAFE", Colors.GREEN)
 
         # Progress indicator
         progress = f"[{i}/{len(text_files)}]"
@@ -570,8 +570,15 @@ def analyze_directory(detector, directory_path, show_summary=False, verbose=Fals
         if file_size > 1024:
             size_str = f"{file_size / 1024:.1f}KB"
 
+        # Color confidence based on value
+        conf_color = Colors.confidence_color(result["confidence"])
+        if Colors.supports_color():
+            confidence = f"{conf_color}{result['confidence']:.1%}{Colors.RESET}"
+        else:
+            confidence = f"{result['confidence']:.1%}"
+
         print(
-            f"{progress} {icon} {file_display:28} {status:10} ({result['confidence']:.1%}) {size_str:>8}"
+            f"{progress} {icon} {file_display:28} {status:10} ({confidence}) {size_str:>8}"
         )
 
     # Calculate total time

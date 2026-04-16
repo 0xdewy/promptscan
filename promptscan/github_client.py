@@ -5,10 +5,9 @@ GitHub API client for repository walking and file content extraction.
 
 import base64
 import os
-import re
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Generator, Tuple
+from typing import Dict, Generator, List, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -69,9 +68,9 @@ class GitHubClient:
         if token:
             self.token = token
             self.headers["Authorization"] = f"token {token}"
-            print(f"🔑 Using GitHub token (rate limit: 5,000 requests/hour)")
+            print("🔑 Using GitHub token (rate limit: 5,000 requests/hour)")
         else:
-            print(f"⚠️  No GitHub token provided (rate limit: 60 requests/hour)")
+            print("⚠️  No GitHub token provided (rate limit: 60 requests/hour)")
 
     def parse_github_url(self, url: str) -> GitHubRepoInfo:
         """
@@ -236,7 +235,7 @@ class GitHubClient:
                     raise FileNotFoundError(f"Resource not found: {url}")
 
                 elif e.response.status_code == 401:
-                    print(f"❌ Authentication failed (401)")
+                    print("❌ Authentication failed (401)")
                     if self.token:
                         print(
                             "💡 Tip: Check if your GitHub token is valid and has appropriate permissions"

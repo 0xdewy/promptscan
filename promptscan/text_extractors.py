@@ -3,10 +3,10 @@
 Text extraction utilities for different file types.
 """
 
-import re
 import os
-from typing import Optional, Dict, Set
+import re
 from pathlib import Path
+from typing import Optional
 
 
 class TextExtractor:
@@ -641,7 +641,7 @@ def test_text_extractor():
     """
 
     extracted = extractor.extract_from_markdown(markdown_content)
-    print(f"\nMarkdown extraction test:")
+    print("\nMarkdown extraction test:")
     print(f"Original: {markdown_content[:100]}...")
     print(f"Extracted: {extracted[:100]}...")
 
@@ -658,7 +658,7 @@ def test_text_extractor():
     '''
 
     extracted = extractor._extract_python_comments(python_code)
-    print(f"\nPython comment extraction test:")
+    print("\nPython comment extraction test:")
     print(f"Extracted: {extracted}")
 
 

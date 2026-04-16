@@ -9,8 +9,8 @@ import os
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
-import warnings
 import logging
+import warnings
 
 # Suppress ALL warnings BEFORE any imports
 warnings.filterwarnings("ignore")
@@ -23,11 +23,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import __version__, get_model_path, get_default_model_save_path
-from .data_utils import (
-    ensure_data_files,
-)
+from . import __version__, get_default_model_save_path
 from .unified_detector import UnifiedDetector
+from .utils.colors import Colors
 
 
 def _display_prediction(
@@ -54,26 +52,36 @@ def _display_prediction(
             model_type_display = (
                 model_types[idx] if idx < len(model_types) else f"Model {idx}"
             )
+
+            # Color-code model type
+            model_display = Colors.colored(model_type_display, Colors.model_color(idx))
+
+            # Color-code prediction
+            pred_display = Colors.prediction(pred["prediction"], pred["confidence"])
+
             if interactive:
-                print(
-                    f"     {model_type_display}: {pred['prediction']} ({pred['confidence']:.2%})"
-                )
+                print(f"     {model_display}: {pred_display}")
             else:
-                print(
-                    f"  - {model_type_display}: {pred['prediction']} ({pred['confidence']:.2%})"
-                )
+                print(f"  - {model_display}: {pred_display}")
 
         if not interactive:
             print(
-                f"\nEnsemble result: {result['prediction']} ({result['confidence']:.2%})"
+                f"\n{Colors.header('Ensemble result:')} "
+                f"{Colors.prediction(result['prediction'], result['confidence'])}"
             )
         else:
-            print(f"   Ensemble: {result['prediction']} ({result['confidence']:.2%})")
+            print(
+                f"   {Colors.header('Ensemble:')} "
+                f"{Colors.prediction(result['prediction'], result['confidence'])}"
+            )
     else:
         if interactive:
-            print(f"   Confidence: {result['confidence']:.1%}")
+            print(f"   {Colors.prediction(result['prediction'], result['confidence'])}")
         else:
-            print(f"Result: {result['prediction']} ({result['confidence']:.2%})")
+            print(
+                f"{Colors.header('Result:')} "
+                f"{Colors.prediction(result['prediction'], result['confidence'])}"
+            )
 
 
 def predict_command(args):
@@ -95,8 +103,8 @@ def predict_command(args):
             model_dir=args.model_dir,
         )
     except FileNotFoundError as e:
-        print(f"\n❌ Error: {e}")
-        print("\n💡 You can:")
+        print(f"\n{Colors.error(f'❌ Error: {e}')}")
+        print(f"\n{Colors.info('💡 You can:')}")
         if args.model_type == "ensemble":
             print("   1. Train individual models first:")
             print("      promptscan train --model-type cnn")
@@ -116,20 +124,20 @@ def predict_command(args):
 
     # Show detector info
     info = detector.get_info()
-    print(f"✅ Model loaded successfully in {load_time:.2f}s")
+    print(f"{Colors.success(f'✅ Model loaded successfully in {load_time:.2f}s')}")
     print()
 
     if args.model_type == "ensemble":
-        print("🤝 Ensemble Model Configuration:")
-        print(f"   Models: {len(info['models'])}")
-        print(f"   Voting strategy: {info['voting_strategy']}")
+        print(f"{Colors.header('🤝 Ensemble Model Configuration:')}")
+        print(f"   {Colors.info(f'Models: {len(info['models'])}')}")
+        print(f"   {Colors.info(f'Voting strategy: {info['voting_strategy']}')}")
         print()
-        print("   Individual models:")
+        print(f"   {Colors.header('Individual models:')}")
         for model_info in info["models"]:
             params = f"{model_info['parameters']:,}"
             print(f"     • {model_info['type']:12} - {params:>10} parameters")
     else:
-        print(f"📊 Model Information:")
+        print("📊 Model Information:")
         print(f"   Type: {info['type']}")
         print(f"   Parameters: {info['parameters']:,}")
 
@@ -250,28 +258,34 @@ def predict_command(args):
             # Additional insights
             if result["prediction"] == "INJECTION":
                 if result["confidence"] > 0.9:
-                    print("⚠️  High confidence injection detected!")
-                    print("   This file appears to contain prompt injection attempts.")
-                else:
-                    print("⚠️  Potential injection detected")
-                    print("   This file may contain suspicious patterns.")
-            else:
-                if result["confidence"] > 0.9:
-                    print("✅ High confidence safe content")
+                    print(f"{Colors.error('⚠️  High confidence injection detected!')}")
                     print(
-                        "   This file appears to contain safe and legitimate content."
+                        f"   {Colors.DIM}This file appears to contain prompt injection attempts.{Colors.RESET}"
                     )
                 else:
-                    print("⚠️  Low confidence result")
-                    print("   Consider manual review for important decisions.")
+                    print(f"{Colors.warning('⚠️  Potential injection detected')}")
+                    print(
+                        f"   {Colors.DIM}This file may contain suspicious patterns.{Colors.RESET}"
+                    )
+            else:
+                if result["confidence"] > 0.9:
+                    print(f"{Colors.success('✅ High confidence safe content')}")
+                    print(
+                        f"   {Colors.DIM}This file appears to contain safe and legitimate content.{Colors.RESET}"
+                    )
+                else:
+                    print(f"{Colors.warning('⚠️  Low confidence result')}")
+                    print(
+                        f"   {Colors.DIM}Consider manual review for important decisions.{Colors.RESET}"
+                    )
 
             print()
             print("=" * 60)
 
         except IOError as e:
-            print(f"❌ Error reading file: {e}")
+            print(f"{Colors.error(f'❌ Error reading file: {e}')}")
         except Exception as e:
-            print(f"❌ Error analyzing file: {e}")
+            print(f"{Colors.error(f'❌ Error analyzing file: {e}')}")
 
     elif args.dir:
         from .detector import analyze_directory
@@ -279,8 +293,9 @@ def predict_command(args):
         analyze_directory(detector, args.dir, args.summary, args.verbose)
 
     elif args.url:
-        import requests
         import time
+
+        import requests
 
         print(f"🌐 Fetching URL: {args.url}")
         print("-" * 60)
@@ -303,7 +318,7 @@ def predict_command(args):
             char_count = len(text)
 
             # Display fetch details
-            print(f"✅ Successfully fetched URL")
+            print("✅ Successfully fetched URL")
             print(f"   Content type: {content_type}")
             print(f"   Size: {content_length:,} bytes ({char_count:,} characters)")
             print(f"   Fetch time: {fetch_time:.2f} seconds")
@@ -367,35 +382,45 @@ def predict_command(args):
             # Additional insights based on prediction
             if result["prediction"] == "INJECTION":
                 if result["confidence"] > 0.9:
-                    print("⚠️  High confidence injection detected!")
+                    print(f"{Colors.error('⚠️  High confidence injection detected!')}")
                     print(
-                        "   This content appears to contain prompt injection attempts."
+                        f"   {Colors.DIM}This content appears to contain prompt injection attempts.{Colors.RESET}"
                     )
                 else:
-                    print("⚠️  Potential injection detected")
-                    print("   This content may contain suspicious patterns.")
+                    print(f"{Colors.warning('⚠️  Potential injection detected')}")
+                    print(
+                        f"   {Colors.DIM}This content may contain suspicious patterns.{Colors.RESET}"
+                    )
             else:
                 if result["confidence"] > 0.9:
-                    print("✅ High confidence safe content")
-                    print("   This content appears to be safe and legitimate.")
+                    print(f"{Colors.success('✅ High confidence safe content')}")
+                    print(
+                        f"   {Colors.DIM}This content appears to be safe and legitimate.{Colors.RESET}"
+                    )
                 else:
-                    print("⚠️  Low confidence result")
-                    print("   Consider manual review for important decisions.")
+                    print(f"{Colors.warning('⚠️  Low confidence result')}")
+                    print(
+                        f"   {Colors.DIM}Consider manual review for important decisions.{Colors.RESET}"
+                    )
 
             print()
             print("=" * 60)
 
         except requests.exceptions.Timeout:
-            print("❌ Error: Request timed out (10 seconds)")
-            print("   The server may be slow or unresponsive.")
+            print(f"{Colors.error('❌ Error: Request timed out (10 seconds)')}")
+            print(
+                f"   {Colors.DIM}The server may be slow or unresponsive.{Colors.RESET}"
+            )
         except requests.exceptions.HTTPError as e:
-            print(f"❌ HTTP Error: {e.response.status_code}")
-            print(f"   {e.response.reason}")
+            print(f"{Colors.error(f'❌ HTTP Error: {e.response.status_code}')}")
+            print(f"   {Colors.DIM}{e.response.reason}{Colors.RESET}")
         except requests.exceptions.ConnectionError:
-            print("❌ Connection Error: Could not connect to server")
-            print("   Check the URL and your internet connection.")
+            print(f"{Colors.error('❌ Connection Error: Could not connect to server')}")
+            print(
+                f"   {Colors.DIM}Check the URL and your internet connection.{Colors.RESET}"
+            )
         except Exception as e:
-            print(f"❌ Error fetching URL: {e}")
+            print(f"{Colors.error(f'❌ Error fetching URL: {e}')}")
 
     elif args.text:
         import time
@@ -463,18 +488,26 @@ def predict_command(args):
         # Additional insights
         if result["prediction"] == "INJECTION":
             if result["confidence"] > 0.9:
-                print("⚠️  High confidence injection detected!")
-                print("   This text appears to contain prompt injection attempts.")
+                print(f"{Colors.error('⚠️  High confidence injection detected!')}")
+                print(
+                    f"   {Colors.DIM}This text appears to contain prompt injection attempts.{Colors.RESET}"
+                )
             else:
-                print("⚠️  Potential injection detected")
-                print("   This text may contain suspicious patterns.")
+                print(f"{Colors.warning('⚠️  Potential injection detected')}")
+                print(
+                    f"   {Colors.DIM}This text may contain suspicious patterns.{Colors.RESET}"
+                )
         else:
             if result["confidence"] > 0.9:
-                print("✅ High confidence safe content")
-                print("   This text appears to be safe and legitimate.")
+                print(f"{Colors.success('✅ High confidence safe content')}")
+                print(
+                    f"   {Colors.DIM}This text appears to be safe and legitimate.{Colors.RESET}"
+                )
             else:
-                print("⚠️  Low confidence result")
-                print("   Consider manual review for important decisions.")
+                print(f"{Colors.warning('⚠️  Low confidence result')}")
+                print(
+                    f"   {Colors.DIM}Consider manual review for important decisions.{Colors.RESET}"
+                )
 
         print()
         print("=" * 60)
@@ -509,14 +542,11 @@ def predict_command(args):
                 # Update counts
                 if result["prediction"] == "INJECTION":
                     injection_count += 1
-                    icon = "🔴"
-                    status = "INJECTION"
-                else:
-                    icon = "🟢"
-                    status = "SAFE"
 
                 # Display result with individual model predictions
-                print(f"   {icon} Result: {status}")
+                print(
+                    f"   {Colors.prediction(result['prediction'], result['confidence'])}"
+                )
                 _display_prediction(
                     result, args.model_type, detector, source=None, interactive=True
                 )
@@ -548,10 +578,14 @@ def predict_command(args):
                     (safe_count / analysis_count * 100) if analysis_count > 0 else 0
                 )
 
-                print(f"📊 Session Summary:")
+                print(f"{Colors.header('📊 Session Summary:')}")
                 print(f"   Total analyses: {analysis_count}")
-                print(f"   🔴 Injections: {injection_count} ({injection_pct:.1f}%)")
-                print(f"   🟢 Safe: {safe_count} ({safe_pct:.1f}%)")
+                print(
+                    f"   {Colors.error(f'🔴 Injections: {injection_count} ({injection_pct:.1f}%)')}"
+                )
+                print(
+                    f"   {Colors.success(f'🟢 Safe: {safe_count} ({safe_pct:.1f}%)')}"
+                )
             print("=" * 60)
             sys.exit(0)
 
@@ -562,8 +596,10 @@ def train_command(args):
     # Load data from prompts.parquet and create dynamic splits
     import os
     import sys
-    from .parquet_store import ParquetDataStore
+
     import pandas as pd
+
+    from .parquet_store import ParquetDataStore
 
     # Determine which data source to use
     data_source = args.data_source
@@ -607,7 +643,7 @@ def train_command(args):
 
     # Handle pre-split data or create splits
     if args.use_pre_split:
-        print(f"\n🔀 Using pre-split data...")
+        print("\n🔀 Using pre-split data...")
 
         # Load pre-split files
         train_path = "data/train_split.parquet"
@@ -634,7 +670,7 @@ def train_command(args):
         print(f"   Test set: {len(test_data)} prompts (pre-split)")
     else:
         # Create training splits dynamically
-        print(f"\n🔀 Creating training splits (80% train, 10% validation, 10% test)...")
+        print("\n🔀 Creating training splits (80% train, 10% validation, 10% test)...")
         splits = store.get_training_splits(train_ratio=0.8, val_ratio=0.1)
 
         train_data = convert_to_training_format(splits["train"])
@@ -652,11 +688,11 @@ def train_command(args):
     # Set default model path if not provided
     if args.model is None:
         if args.model_type == "cnn":
-            args.model = str(get_default_model_save_path("cnn_best.pt"))
+            args.model = str(get_default_model_save_path("cnn_best"))
         elif args.model_type == "lstm":
-            args.model = str(get_default_model_save_path("lstm_best.pt"))
+            args.model = str(get_default_model_save_path("lstm_best"))
         elif args.model_type == "transformer":
-            args.model = str(get_default_model_save_path("transformer_best.pt"))
+            args.model = str(get_default_model_save_path("transformer_best"))
 
     print(f"\n🏋️  Training {args.model_type} model...")
     print(f"  Model will be saved to: {args.model}")
@@ -806,7 +842,6 @@ def export_command(args):
 def insert_command(args):
     """Handle insert command - add new prompts to the database."""
     from .parquet_store import ParquetDataStore
-    from .batch_importer import BatchImporter
 
     # Use output file if specified, otherwise use parquet file
     parquet_file = args.output if args.output else args.parquet
@@ -1030,9 +1065,11 @@ def _format_size(size_bytes: int) -> str:
 
 def import_command(args):
     """Handle import command - import prompts from a parquet file."""
-    from .parquet_store import ParquetDataStore
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
+
+    from .parquet_store import ParquetDataStore
 
     # Check if source file exists
     source_path = Path(args.source)
@@ -1059,7 +1096,7 @@ def import_command(args):
     store = ParquetDataStore(args.target)
     before_stats = store.get_statistics()
 
-    print(f"\nTarget database before import:")
+    print("\nTarget database before import:")
     print(f"  Total prompts: {before_stats['total']}")
     print(
         f"  Injection prompts: {before_stats['injections']} ({before_stats['injection_percentage']:.1f}%)"
@@ -1078,7 +1115,7 @@ def import_command(args):
 
     # Get updated stats
     after_stats = store.get_statistics()
-    print(f"\nTarget database after import:")
+    print("\nTarget database after import:")
     print(f"  Total prompts: {after_stats['total']}")
     print(
         f"  Injection prompts: {after_stats['injections']} ({after_stats['injection_percentage']:.1f}%)"
@@ -1089,6 +1126,266 @@ def import_command(args):
 
     added = after_stats["total"] - before_stats["total"]
     print(f"\nSuccessfully added {added} new prompts to {args.target}")
+
+
+def hf_download_command(args):
+    """Handle HF download command."""
+    try:
+        from .hf_utils import download_all_models_from_hf
+    except ImportError:
+        print(
+            "Error: huggingface-hub not installed. Install with: pip install huggingface-hub"
+        )
+        sys.exit(1)
+
+    print("Downloading models from Hugging Face Hub...")
+    print(f"Repository: {args.repo_id}")
+    print(f"Output directory: {args.output_dir}")
+
+    success = download_all_models_from_hf(
+        repo_id=args.repo_id,
+        output_dir=args.output_dir,
+        token=args.token,
+        force_download=args.force,
+    )
+
+    if success:
+        print(f"\n✓ All models downloaded successfully to {args.output_dir}/")
+        print("  - cnn_best.safetensors + .config.json")
+        print("  - lstm_best.safetensors + .config.json")
+        print("  - transformer_best.safetensors + .config.json")
+        print('\nYou can now use: promptscan predict "Your text here"')
+    else:
+        print("\n⚠ Some models failed to download")
+        sys.exit(1)
+
+
+def hf_upload_command(args):
+    """Handle HF upload command."""
+    try:
+        from huggingface_hub import HfApi, create_repo, upload_file
+        from huggingface_hub.utils import HfHubHTTPError
+    except ImportError:
+        print(
+            "Error: huggingface-hub not installed. Install with: pip install huggingface-hub"
+        )
+        sys.exit(1)
+
+    print("Uploading models to Hugging Face Hub...")
+    print(f"Repository: {args.repo_id}")
+    print(f"Model directory: {args.model_dir}")
+
+    # Get token from args or environment
+    token = args.token or os.environ.get("HF_TOKEN")
+    if not token:
+        print("Error: HF_TOKEN environment variable not set and no token provided")
+        print("Set HF_TOKEN in your environment or pass --token argument")
+        sys.exit(1)
+
+    api = HfApi(token=token)
+
+    # Check if repository exists, create if not
+    try:
+        repo_info = api.repo_info(repo_id=args.repo_id, repo_type="model")
+        print(f"Repository exists: {repo_info.id}")
+    except HfHubHTTPError as e:
+        if e.status_code == 404:
+            print(f"Creating repository: {args.repo_id}")
+            try:
+                create_repo(
+                    repo_id=args.repo_id,
+                    token=token,
+                    private=args.private,
+                    repo_type="model",
+                    exist_ok=True,
+                )
+                print(f"Created repository: {args.repo_id}")
+            except Exception as create_error:
+                print(f"Error creating repository: {create_error}")
+                sys.exit(1)
+        else:
+            print(f"Error checking repository: {e}")
+            sys.exit(1)
+
+    # Upload each model type
+    model_types = ["cnn", "lstm", "transformer"]
+    success_count = 0
+
+    for model_type in model_types:
+        print(f"\n{'=' * 60}")
+        print(f"Uploading {model_type.upper()} model...")
+        print(f"{'=' * 60}")
+
+        # Model files
+        base_name = f"{model_type}_best"
+        safetensors_file = Path(args.model_dir) / f"{base_name}.safetensors"
+        config_file = Path(args.model_dir) / f"{base_name}.config.json"
+
+        if not safetensors_file.exists():
+            print(f"  Warning: {safetensors_file} not found, skipping")
+            continue
+
+        if not config_file.exists():
+            print(f"  Warning: {config_file} not found, skipping")
+            continue
+
+        # Create model directory in repo
+        repo_model_dir = model_type
+
+        try:
+            # Upload safetensors file
+            print(f"  Uploading weights: {safetensors_file.name}")
+            upload_file(
+                path_or_fileobj=str(safetensors_file),
+                path_in_repo=f"{repo_model_dir}/model.safetensors",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - {model_type} weights",
+            )
+
+            # Upload config file
+            print(f"  Uploading config: {config_file.name}")
+            upload_file(
+                path_or_fileobj=str(config_file),
+                path_in_repo=f"{repo_model_dir}/config.json",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - {model_type} config",
+            )
+
+            # Also upload with original names for compatibility
+            upload_file(
+                path_or_fileobj=str(safetensors_file),
+                path_in_repo=f"{repo_model_dir}/{base_name}.safetensors",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - {model_type} weights (original name)",
+            )
+
+            upload_file(
+                path_or_fileobj=str(config_file),
+                path_in_repo=f"{repo_model_dir}/{base_name}.config.json",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - {model_type} config (original name)",
+            )
+
+            print(f"  ✓ {model_type.upper()} model uploaded successfully")
+            success_count += 1
+
+        except Exception as e:
+            print(f"  ✗ Error uploading {model_type} model: {e}")
+
+    # Upload README and model card if they exist
+    print(f"\n{'=' * 60}")
+    print("Uploading documentation...")
+    print(f"{'=' * 60}")
+
+    try:
+        # Check for README.md
+        readme_file = Path("README.md")
+        if readme_file.exists():
+            print("  Uploading README.md")
+            upload_file(
+                path_or_fileobj=str(readme_file),
+                path_in_repo="README.md",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - README",
+            )
+
+        # Check for model card
+        model_card_file = Path("model_card.md")
+        if model_card_file.exists():
+            print("  Uploading model_card.md")
+            upload_file(
+                path_or_fileobj=str(model_card_file),
+                path_in_repo="model_card.md",
+                repo_id=args.repo_id,
+                token=token,
+                commit_message=f"{args.commit_message} - model card",
+            )
+
+        print("  ✓ Documentation uploaded successfully")
+
+    except Exception as e:
+        print(f"  ✗ Error uploading documentation: {e}")
+
+    print(f"\n{'=' * 60}")
+    print("Upload Summary")
+    print(f"{'=' * 60}")
+    print(f"Repository: {args.repo_id}")
+    print(f"Models uploaded: {success_count}/{len(model_types)}")
+    print(f"View at: https://huggingface.co/{args.repo_id}")
+
+    if success_count == len(model_types):
+        print("\n✓ All models uploaded successfully!")
+    else:
+        print(f"\n⚠ Only {success_count}/{len(model_types)} models uploaded")
+        sys.exit(1)
+
+
+def hf_list_command(args):
+    """Handle HF list command."""
+    try:
+        from .hf_utils import check_hf_model_available, get_hf_model_info
+    except ImportError:
+        print(
+            "Error: huggingface-hub not installed. Install with: pip install huggingface-hub"
+        )
+        sys.exit(1)
+
+    print(f"Checking Hugging Face Hub repository: {args.repo_id}")
+
+    # Check if repo exists
+    repo_info = get_hf_model_info(repo_id=args.repo_id, token=args.token)
+
+    if repo_info:
+        print("\n✓ Repository found:")
+        print(f"  ID: {repo_info['id']}")
+        print(f"  Last modified: {repo_info['last_modified']}")
+        print(f"  Private: {repo_info['private']}")
+        if "tags" in repo_info and repo_info["tags"]:
+            print(f"  Tags: {', '.join(repo_info['tags'])}")
+        if "downloads" in repo_info:
+            print(f"  Downloads: {repo_info['downloads']}")
+        if "likes" in repo_info:
+            print(f"  Likes: {repo_info['likes']}")
+
+        # Check for individual models
+        print("\nChecking for individual models...")
+        model_types = ["cnn", "lstm", "transformer"]
+
+        for model_type in model_types:
+            available = check_hf_model_available(
+                repo_id=args.repo_id,
+                model_dir=model_type,
+                token=args.token,
+            )
+            status = "✓ Available" if available else "✗ Not found"
+            print(f"  {model_type.upper()}: {status}")
+
+        print("\nTo download models: promptscan hf download")
+
+    else:
+        print("\n✗ Repository not found or inaccessible")
+        print(f"Check: https://huggingface.co/{args.repo_id}")
+        sys.exit(1)
+
+
+def convert_command(args):
+    """Handle convert command."""
+    from .convert_model import convert_directory, convert_pt_to_safetensors
+
+    input_path = Path(args.input)
+
+    if args.batch or input_path.is_dir():
+        success = convert_directory(args.input, args.output, args.force)
+    else:
+        success = convert_pt_to_safetensors(args.input, args.output, args.force)
+
+    if not success:
+        sys.exit(1)
 
 
 def version_command(args):
@@ -1235,6 +1532,24 @@ Examples:
     )
     train_parser.set_defaults(func=train_command)
 
+    # Convert command
+    convert_parser = subparsers.add_parser(
+        "convert-model", help="Convert .pt model files to safetensors format"
+    )
+    convert_parser.add_argument(
+        "input", help="Input .pt file or directory containing .pt files"
+    )
+    convert_parser.add_argument(
+        "-o", "--output", help="Output file or directory (default: same as input)"
+    )
+    convert_parser.add_argument(
+        "-f", "--force", action="store_true", help="Overwrite existing files"
+    )
+    convert_parser.add_argument(
+        "--batch", action="store_true", help="Batch convert all .pt files in directory"
+    )
+    convert_parser.set_defaults(func=convert_command)
+
     # Export command
     export_parser = subparsers.add_parser(
         "export", help="Export data to various formats"
@@ -1323,6 +1638,64 @@ Examples:
         "--target", default="data/prompts.parquet", help="Target parquet file path"
     )
     import_parser.set_defaults(func=import_command)
+
+    # Hugging Face Hub commands
+    hf_parser = subparsers.add_parser(
+        "hf", help="Hugging Face Hub operations (download/upload models)"
+    )
+    hf_subparsers = hf_parser.add_subparsers(
+        title="hf commands", dest="hf_command", help="Available HF commands"
+    )
+
+    # Download models from HF
+    download_parser = hf_subparsers.add_parser(
+        "download", help="Download models from Hugging Face Hub"
+    )
+    download_parser.add_argument(
+        "--repo-id", default="0xdewy/promptscan", help="Hugging Face repository ID"
+    )
+    download_parser.add_argument(
+        "--output-dir", default="models", help="Directory to save downloaded models"
+    )
+    download_parser.add_argument(
+        "--token",
+        help="Hugging Face token (for private repos, default: HF_TOKEN env var)",
+    )
+    download_parser.add_argument(
+        "--force", action="store_true", help="Force re-download even if cached"
+    )
+    download_parser.set_defaults(func=hf_download_command)
+
+    # Upload models to HF
+    upload_parser = hf_subparsers.add_parser(
+        "upload", help="Upload models to Hugging Face Hub (requires write access)"
+    )
+    upload_parser.add_argument(
+        "--repo-id", default="0xdewy/promptscan", help="Hugging Face repository ID"
+    )
+    upload_parser.add_argument(
+        "--model-dir", default="models", help="Directory containing model files"
+    )
+    upload_parser.add_argument(
+        "--token", help="Hugging Face token (default: HF_TOKEN env var)"
+    )
+    upload_parser.add_argument(
+        "--private", action="store_true", help="Create private repository"
+    )
+    upload_parser.add_argument(
+        "--commit-message", default="Upload promptscan models", help="Commit message"
+    )
+    upload_parser.set_defaults(func=hf_upload_command)
+
+    # List available models on HF
+    list_parser = hf_subparsers.add_parser(
+        "list", help="List available models on Hugging Face Hub"
+    )
+    list_parser.add_argument(
+        "--repo-id", default="0xdewy/promptscan", help="Hugging Face repository ID"
+    )
+    list_parser.add_argument("--token", help="Hugging Face token (for private repos)")
+    list_parser.set_defaults(func=hf_list_command)
 
     # Version command (as separate parser for --version flag)
     version_parser = subparsers.add_parser("version", help="Show version information")
