@@ -79,3 +79,13 @@ class SubwordProcessor(BaseProcessor):
             model_name=config.get("model_name", "distilbert-base-uncased"),
             max_length=config.get("max_length", 128),
         )
+
+    @property
+    def vocab(self) -> Dict[str, int]:
+        """Expose tokenizer vocab as dictionary for compatibility."""
+        return self.tokenizer.get_vocab()
+
+    @property
+    def vocab_size(self) -> int:
+        """Return vocabulary size."""
+        return len(self.tokenizer)

@@ -23,6 +23,7 @@ def train_model(
     data_config: DataConfig,
     model_config: Optional[ModelConfig] = None,
     output_dir: Optional[Path] = None,
+    resume: bool = False,
 ) -> Tuple[Any, Any, Dict[str, Any]]:
     """
     Unified training function for all model types.
@@ -59,7 +60,7 @@ def train_model(
     # Load training strategy
     strategy = get_training_strategy(model_type)
 
-    # Load data from prompts.parquet with dynamic splits
+    # Load data from merged.parquet with dynamic splits
     print(f"Loading data from: {data_config.prompts_path}")
 
     # Initialize data store
@@ -98,17 +99,20 @@ def train_model(
 
     def convert_to_training_format(df):
         """Convert DataFrame with 'is_injection' to list of dicts with 'label'."""
+        texts = df["text"].tolist()
+        labels = df["is_injection"].astype(int).tolist()
+        optional_fields = ["source", "category", "variation_type"]
+        optional_data = {
+            field: df[field].tolist() if field in df.columns else None
+            for field in optional_fields
+        }
         records = []
-        for _, row in df.iterrows():
-            # Create base record with required fields
-            record = {"text": row["text"], "label": 1 if row["is_injection"] else 0}
-
-            # Add optional fields if present
-            optional_fields = ["source", "category", "variation_type"]
+        for i in range(len(texts)):
+            record = {"text": texts[i], "label": labels[i]}
             for field in optional_fields:
-                if field in df.columns and pd.notna(row[field]):
-                    record[field] = row[field]
-
+                data = optional_data[field]
+                if data is not None and pd.notna(data[i]):
+                    record[field] = data[i]
             records.append(record)
         return records
 
@@ -131,7 +135,7 @@ def train_model(
     if hasattr(processor, "build_vocab"):
         train_texts = [item["text"] for item in train_data]
         processor.build_vocab(train_texts)
-        print(f"Vocabulary size: {len(processor.vocab)}")
+        print(f"Vocabulary size: {_get_vocab_size(processor)}")
 
     # Create model
     print(f"\nCreating {model_type} model...")
@@ -153,7 +157,7 @@ def train_model(
         test_data, processor, model_config.batch_size, collate_fn
     )
 
-    # Create trainer
+    # Create trainer - pass resume flag for proper embedding resize on resume
     print("\nCreating trainer...")
     trainer = strategy.create_trainer(
         model=model,
@@ -161,7 +165,30 @@ def train_model(
         val_loader=val_loader,
         config=model_config,
         processor=processor,
+        resume=resume,
     )
+
+    # Validate training data before starting
+    print("\nValidating training data...")
+    if hasattr(processor, "validate_training_data"):
+        train_texts = [item["text"] for item in train_data]
+        val_texts = [item["text"] for item in val_data]
+        validation = processor.validate_training_data(train_texts + val_texts)
+        if not validation["valid"]:
+            raise RuntimeError(
+                f"Training data contains out-of-range tokens! "
+                f"Max token ID: {validation['max_id_found']}, "
+                f"Embedding size: {validation['embedding_size']}, "
+                f"Out of range count: {validation['out_of_range_count']}"
+            )
+        print(f"  Data validation passed (max token ID: {validation['max_id_found']}, embedding: {validation['embedding_size']})")
+    else:
+        max_token_id = _get_max_token_id(processor)
+        embedding_size = getattr(processor, 'next_id', max_token_id + 1)
+        if max_token_id >= embedding_size:
+            raise RuntimeError(
+                f"Processor configuration error: max_token_id ({max_token_id}) >= embedding_size ({embedding_size})"
+            )
 
     # Train model
     print("\nStarting training...")
@@ -174,9 +201,13 @@ def train_model(
     model_filename = f"{model_type}_best"
     model_path = output_dir / model_filename
 
+    train_acc = 0.0
+    if "history" in results and len(results["history"]) > 0:
+        train_acc = results["history"][-1].get("train_accuracy", 0.0)
+
     trainer.save_model(
         model_path,
-        train_acc=results["final_metrics"].get("train_accuracy", 0),
+        train_acc=train_acc,
         val_acc=results["final_metrics"].get("val_accuracy", 0),
         test_acc=results.get("test_metrics", {}).get("accuracy", 0),
         epochs_trained=results["epochs_trained"],
@@ -247,7 +278,30 @@ def train_model_from_data(
     model = None
     processor = None
 
-    if resume and Path(checkpoint_path).exists():
+    def _get_vocab_size(processor) -> int:
+        """Safely get vocabulary size from processor."""
+        if hasattr(processor, 'vocab_size'):
+            return processor.vocab_size
+        elif hasattr(processor, 'vocab'):
+            return len(processor.vocab)
+        return 0
+
+    def _get_max_token_id(processor) -> int:
+        """Safely get max token ID from processor vocab."""
+        if hasattr(processor, 'vocab'):
+            try:
+                return max((v for v in processor.vocab.values() if isinstance(v, int)), default=0)
+            except (ValueError, TypeError):
+                return 0
+        return 0
+
+    def _checkpoint_exists(path: Path) -> bool:
+        """Check if checkpoint files exist for a model."""
+        safetensors_path = path.with_suffix(".safetensors")
+        config_path = path.with_suffix(".config.json")
+        return safetensors_path.exists() and config_path.exists()
+
+    if resume and _checkpoint_exists(Path(checkpoint_path)):
         print(f"\n🔄 Resuming training from checkpoint: {checkpoint_path}")
         try:
             # Convert "auto" to actual device
@@ -258,12 +312,7 @@ def train_model_from_data(
                 checkpoint_path, model_config, device=actual_device
             )
             print(f"✓ Loaded {model_type} model from checkpoint")
-
-            # Check if processor needs vocabulary rebuilding
-            if hasattr(processor, "build_vocab"):
-                train_texts = [item["text"] for item in train_data]
-                processor.build_vocab(train_texts)
-                print(f"  Rebuilt vocabulary: {len(processor.vocab)} tokens")
+            print(f"  Checkpoint vocabulary: {_get_vocab_size(processor)} tokens")
 
         except Exception as e:
             print(f"⚠️  Failed to load checkpoint: {e}")
@@ -279,7 +328,7 @@ def train_model_from_data(
         if hasattr(processor, "build_vocab"):
             train_texts = [item["text"] for item in train_data]
             processor.build_vocab(train_texts)
-            print(f"Vocabulary size: {len(processor.vocab)}")
+            print(f"Vocabulary size: {_get_vocab_size(processor)}")
 
     # Create model if not loaded from checkpoint
     if model is None:
@@ -287,6 +336,16 @@ def train_model_from_data(
         model = strategy.create_model(model_config)
     else:
         print(f"\nUsing loaded {model_type} model from checkpoint")
+
+        if hasattr(processor, "build_vocab"):
+            train_texts = [item["text"] for item in train_data]
+            original_vocab_size = _get_vocab_size(processor)
+            processor.build_vocab(train_texts)
+            new_vocab_size = _get_vocab_size(processor)
+            if new_vocab_size != original_vocab_size:
+                print(
+                    f"  Extended vocabulary: {original_vocab_size} -> {new_vocab_size} tokens"
+                )
 
     # Create datasets and dataloaders
     print("\nCreating dataloaders...")
@@ -304,7 +363,7 @@ def train_model_from_data(
         test_data, processor, model_config.batch_size, collate_fn
     )
 
-    # Create trainer
+    # Create trainer - pass resume flag for proper embedding resize on resume
     print("\nCreating trainer...")
     trainer = strategy.create_trainer(
         model=model,
@@ -312,7 +371,30 @@ def train_model_from_data(
         val_loader=val_loader,
         config=model_config,
         processor=processor,
+        resume=resume,
     )
+
+    # Validate training data before starting
+    print("\nValidating training data...")
+    if hasattr(processor, "validate_training_data"):
+        train_texts = [item["text"] for item in train_data]
+        val_texts = [item["text"] for item in val_data]
+        validation = processor.validate_training_data(train_texts + val_texts)
+        if not validation["valid"]:
+            raise RuntimeError(
+                f"Training data contains out-of-range tokens! "
+                f"Max token ID: {validation['max_id_found']}, "
+                f"Embedding size: {validation['embedding_size']}, "
+                f"Out of range count: {validation['out_of_range_count']}"
+            )
+        print(f"  Data validation passed (max token ID: {validation['max_id_found']}, embedding: {validation['embedding_size']})")
+    else:
+        max_token_id = _get_max_token_id(processor)
+        embedding_size = getattr(processor, 'next_id', max_token_id + 1)
+        if max_token_id >= embedding_size:
+            raise RuntimeError(
+                f"Processor configuration error: max_token_id ({max_token_id}) >= embedding_size ({embedding_size})"
+            )
 
     # Train model
     print("\nStarting training...")
@@ -325,9 +407,13 @@ def train_model_from_data(
     model_filename = f"{model_type}_best"
     model_path = output_dir / model_filename
 
+    train_acc = 0.0
+    if "history" in results and len(results["history"]) > 0:
+        train_acc = results["history"][-1].get("train_accuracy", 0.0)
+
     trainer.save_model(
         model_path,
-        train_acc=results["final_metrics"].get("train_accuracy", 0),
+        train_acc=train_acc,
         val_acc=results["final_metrics"].get("val_accuracy", 0),
         test_acc=results.get("test_metrics", {}).get("accuracy", 0),
         epochs_trained=results["epochs_trained"],
@@ -409,7 +495,7 @@ def get_training_strategy(model_type: str) -> TrainingStrategy:
     Get training strategy for model type.
 
     Args:
-        model_type: Type of model ("cnn", "lstm", "transformer")
+        model_type: Type of model ("cnn", "lstm", "transformer", "deberta")
 
     Returns:
         TrainingStrategy instance
@@ -426,6 +512,10 @@ def get_training_strategy(model_type: str) -> TrainingStrategy:
         from .strategies.transformer_strategy import TransformerTrainingStrategy
 
         return TransformerTrainingStrategy()
+    elif model_type == "deberta":
+        from .strategies.deberta_strategy import DeBERTaTrainingStrategy
+
+        return DeBERTaTrainingStrategy()
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 

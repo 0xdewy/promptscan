@@ -4,7 +4,6 @@ Ensemble detector with parallel inference and consensus voting.
 """
 
 import concurrent.futures
-from pathlib import Path
 from typing import Any, Dict, List
 
 from ..models.cnn_model import SimpleCNN
@@ -127,61 +126,48 @@ class EnsembleDetector:
         device: str = "cpu",
     ) -> "EnsembleDetector":
         """
-        Load ensemble from pretrained models in directory.
+        Load ensemble from pretrained models.
 
-        Looks for:
-            - cnn_best.safetensors + cnn_best.config.json
-            - lstm_best.safetensors + lstm_best.config.json
-            - transformer_best.safetensors + transformer_best.config.json
+        Uses get_model_path() to locate each model, which triggers automatic
+        download from Hugging Face Hub if the model is not found locally.
         """
-        if model_dir is None:
-            # Use package models directory
-            import os
+        from .. import get_model_path
 
-            package_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            model_dir = os.path.join(package_dir, "models", "checkpoints")
-
-        model_dir = Path(model_dir)
-
-        # Create directory if it doesn't exist
-        model_dir.mkdir(parents=True, exist_ok=True)
-
-        model_configs = []
         expected_models = [
             ("cnn", "cnn_best"),
             ("lstm", "lstm_best"),
             ("transformer", "transformer_best"),
         ]
 
+        model_configs = []
         for model_type, model_name in expected_models:
-            # Check for safetensors file
-            safetensors_path = model_dir / f"{model_name}.safetensors"
-            config_path = model_dir / f"{model_name}.config.json"
-
-            if safetensors_path.exists() and config_path.exists():
-                weight = 0.5 if model_type == "transformer" else 0.25
+            try:
+                checkpoint_path = get_model_path(model_name)
+                if model_type == "lstm":
+                    weight = 0.5
+                elif model_type == "transformer":
+                    weight = 0.35
+                else:
+                    weight = 0.15
                 model_configs.append(
                     {
                         "type": model_type,
-                        "checkpoint_path": str(
-                            model_dir / model_name
-                        ),  # Base name without extension
+                        "checkpoint_path": str(checkpoint_path),
                         "weight": weight,
                     }
                 )
+            except FileNotFoundError:
+                print(f"Warning: {model_name} not found, skipping in ensemble")
 
         if not model_configs:
             raise FileNotFoundError(
-                f"No model checkpoints found in {model_dir}\n"
-                f"Expected files (safetensors format):\n"
-                f"  - cnn_best.safetensors + cnn_best.config.json\n"
-                f"  - lstm_best.safetensors + lstm_best.config.json\n"
-                f"  - transformer_best.safetensors + transformer_best.config.json\n\n"
-                f"To fix:\n"
-                f"  1. Train individual models: promptscan train --model-type cnn|lstm|transformer\n"
-                f"  2. Specify custom model directory with --model-dir\n"
-                f"  3. Use single model instead of ensemble: --model-type cnn|lstm|transformer\n"
-                f"  4. Convert old .pt files using: promptscan convert-model old.pt new.safetensors"
+                "No model checkpoints found for ensemble.\n"
+                "Tried to load cnn_best, lstm_best, and transformer_best.\n"
+                "Search order: local paths -> Hugging Face Hub auto-download.\n\n"
+                "To fix:\n"
+                "  1. Ensure huggingface-hub is installed: pip install huggingface-hub\n"
+                "  2. Check network connectivity to huggingface.co\n"
+                "  3. Or train individual models: promptscan train --model-type cnn|lstm|transformer"
             )
 
         return cls(model_configs, voting_strategy, device)
@@ -189,7 +175,7 @@ class EnsembleDetector:
     def get_model_info(self) -> List[Dict[str, Any]]:
         """Get information about loaded models."""
         info = []
-        for i, (model, processor, weight, model_type) in enumerate(
+        for i, (model, _processor, weight, model_type) in enumerate(
             zip(self.models, self.processors, self.weights, self.model_types)
         ):
             model_info = {

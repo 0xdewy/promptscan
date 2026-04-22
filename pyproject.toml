@@ -38,6 +38,8 @@ dependencies = [
     "transformers>=4.30.0",
     "tokenizers>=0.13.0",
     "psutil>=5.9.0",
+    "datasets>=4.8.4",
+    "scikit-learn>=1.7.2",
 ]
 
 
@@ -90,11 +92,6 @@ link-mode = "copy"
 
 
 
-[project.entry-points."promptscan.commands"]
-predict = "promptscan.cli:predict_command"
-train = "promptscan.cli:train_command"
-export = "promptscan.cli:export_command"
-
 [tool.black]
 line-length = 88
 target-version = ['py38']
@@ -122,4 +119,5 @@ dev = [
     "mypy>=1.14.1",
     "pytest>=8.3.5",
     "ruff>=0.15.8",
+    "scikit-learn>=1.7.2",
 ]

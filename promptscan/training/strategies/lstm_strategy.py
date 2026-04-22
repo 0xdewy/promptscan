@@ -26,11 +26,25 @@ class LSTMTrainer(BaseTrainer):
             weight_decay=1e-4,
         )
 
+    def _create_scheduler(self):
+        """Create ReduceLROnPlateau scheduler for LSTM."""
+        from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+        return ReduceLROnPlateau(
+            self.optimizer,
+            mode="max",
+            factor=0.5,
+            patience=2,
+            min_lr=1e-6,
+        )
+
     def _prepare_batch(
         self, batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """Prepare batch for LSTM forward pass."""
         inputs = {"input_ids": batch["input_ids"].to(self.device)}
+        if "attention_mask" in batch:
+            inputs["attention_mask"] = batch["attention_mask"].to(self.device)
         labels = batch["label"].to(self.device)
         return inputs, labels
 
@@ -69,7 +83,7 @@ class LSTMTrainingStrategy(TrainingStrategy):
     def create_processor(self, config: ModelConfig) -> Any:
         """Create word processor for LSTM."""
         return WordProcessor(
-            max_length=100,  # LSTM-specific max length
+            max_length=config.max_length,
             min_freq=2,
         )
 
@@ -87,15 +101,34 @@ class LSTMTrainingStrategy(TrainingStrategy):
         val_loader: torch.utils.data.DataLoader,
         config: ModelConfig,
         processor: Any,
+        resume: bool = False,
     ) -> BaseTrainer:
         """Create LSTM trainer."""
-        # Update model vocab size based on processor
-        if hasattr(processor, "vocab"):
-            model.embedding = nn.Embedding(
-                len(processor.vocab),
-                config.embedding_dim,
-                padding_idx=0,
-            )
+        if hasattr(processor, "vocab") and hasattr(model, "embedding"):
+            old_vocab_size = model.embedding.num_embeddings
+
+            max_token_id = max((v for v in processor.vocab.values() if isinstance(v, int)), default=0)
+            required_size = max_token_id + 1
+
+            if required_size > old_vocab_size:
+                embedding_dim = model.embedding.embedding_dim
+                new_embedding = nn.Embedding(
+                    required_size,
+                    embedding_dim,
+                    padding_idx=0,
+                )
+
+                with torch.no_grad():
+                    copy_size = min(old_vocab_size, required_size)
+                    new_embedding.weight[:copy_size] = model.embedding.weight[
+                        :copy_size
+                    ]
+
+                if required_size > old_vocab_size:
+                    nn.init.uniform_(new_embedding.weight[old_vocab_size:], -0.1, 0.1)
+
+                model.embedding = new_embedding
+                print(f"  Resized LSTM embedding: {old_vocab_size} -> {required_size}")
 
         return LSTMTrainer(
             model=model,

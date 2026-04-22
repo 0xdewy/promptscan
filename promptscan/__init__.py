@@ -6,6 +6,18 @@ from pathlib import Path
 __version__ = VERSION = "0.1.3"
 
 
+def _is_source_install() -> bool:
+    """Check if running from source tree (development) vs installed package."""
+    current = Path.cwd()
+    for i in range(4):
+        check_dir = current
+        for _ in range(i):
+            check_dir = check_dir.parent
+        if (check_dir / "pyproject.toml").exists() and (check_dir / ".git").exists():
+            return True
+    return False
+
+
 def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
     """
     Get the path to a model checkpoint file (base name without extension).
@@ -13,7 +25,8 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
     Args:
         model_name: Base name of the model (e.g., "cnn_best", "transformer_best")
                    or full path with .pt extension for backward compatibility.
-        hf_fallback: If True, will attempt to download from Hugging Face Hub if not found locally.
+        hf_fallback: If True, will attempt to download from Hugging Face Hub
+            if not found locally.
 
     Returns:
         Path to the model base file (without extension)
@@ -46,17 +59,17 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
         if check_model_files(env_path):
             return env_path
 
-    # Check in the package's checkpoints directory
+    # Check local models/ directory first (user's retrained models)
+    fallback_path = Path("models") / model_name
+    if check_model_files(fallback_path):
+        return fallback_path
+
+    # Check in the package's checkpoints directory (only for installed package)
     package_dir = Path(__file__).parent
     checkpoint_path = package_dir / "models" / "checkpoints" / model_name
 
     if check_model_files(checkpoint_path):
         return checkpoint_path
-
-    # Fallback to the models/ directory
-    fallback_path = Path("models") / model_name
-    if check_model_files(fallback_path):
-        return fallback_path
 
     # Try to find project root and check models directory
     current = Path.cwd()
@@ -79,25 +92,37 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
         if check_model_files(project_model_path):
             return project_model_path
 
+    # Check promptscan cache directory (~/.cache/promptscan/models/)
+    cache_dir = os.environ.get(
+        "PROMPTSCAN_CACHE_DIR",
+        os.path.expanduser("~/.cache/promptscan"),
+    )
+    cache_model_path = Path(cache_dir) / "models" / model_name
+    if check_model_files(cache_model_path):
+        return cache_model_path
+
     # If we get here, no model was found locally
     # Try Hugging Face Hub as a fallback if enabled
-    if hf_fallback and os.environ.get("PROMPTSCAN_USE_HF", "true").lower() in (
-        "true",
-        "1",
-        "yes",
+    if (
+        hf_fallback
+        and not _is_source_install()
+        and os.environ.get("PROMPTSCAN_USE_HF", "true").lower()
+        in (
+            "true",
+            "1",
+            "yes",
+        )
     ):
-        try:
-            # Map model names to HF repo directories
-            hf_model_map = {
-                "cnn_best": ("cnn", "0xdewy/promptscan"),
-                "lstm_best": ("lstm", "0xdewy/promptscan"),
-                "transformer_best": ("transformer", "0xdewy/promptscan"),
-            }
+        hf_model_map = {
+            "cnn_best": ("cnn", "0xdewy/promptscan"),
+            "lstm_best": ("lstm", "0xdewy/promptscan"),
+            "transformer_best": ("transformer", "0xdewy/promptscan"),
+        }
 
-            if model_name in hf_model_map:
-                model_dir, repo_id = hf_model_map[model_name]
-
-                # Try to download from HF
+        if model_name in hf_model_map:
+            model_dir, repo_id = hf_model_map[model_name]
+            print(f"Downloading {model_name} from Hugging Face Hub...")
+            try:
                 from .hf_utils import download_model_from_hf
 
                 local_path = download_model_from_hf(
@@ -108,15 +133,18 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
                 )
 
                 if local_path and check_model_files(local_path):
-                    print(f"✓ Downloaded {model_name} from Hugging Face Hub")
+                    print(f"  -> Saved to {local_path}")
                     return local_path
 
-        except ImportError:
-            # huggingface-hub not installed
-            pass
-        except Exception as e:
-            # HF download failed, continue to error
-            print(f"⚠ Failed to download from Hugging Face Hub: {e}")
+            except ImportError as err:
+                raise ImportError(
+                    f"Model '{model_name}' not found locally and huggingface-hub "
+                    "is required to download it. Install with: pip install huggingface-hub"
+                ) from err
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to download {model_name} from Hugging Face Hub: {e}"
+                ) from e
 
     # If we get here, no model was found
     searched_paths = [
@@ -135,10 +163,13 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
             f"5. Project root models: {project_model_path}.safetensors + {project_model_path}.config.json"
         )
 
-    # Add HF Hub suggestion
+    searched_paths.append(
+        f"6. PromptScan cache: {cache_model_path}.safetensors + {cache_model_path}.config.json"
+    )
+
     if model_name in ["cnn_best", "lstm_best", "transformer_best"]:
         searched_paths.append(
-            f"6. Hugging Face Hub: 0xdewy/promptscan/{model_name.split('_')[0]}/"
+            f"7. Hugging Face Hub: 0xdewy/promptscan/{model_name.split('_')[0]}/"
         )
 
     raise FileNotFoundError(
@@ -151,8 +182,7 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
         "  2. Specify custom path with --model\n"
         "  3. Check if model files exist in expected locations\n"
         "  4. Set PROMPTSCAN_MODEL_DIR environment variable\n"
-        "  5. Convert old .pt files using: promptscan convert-model old.pt new.safetensors\n"
-        "  6. Download from Hugging Face Hub: promptscan download-models"
+        "  5. Download from Hugging Face Hub: promptscan download-models"
     )
 
 

@@ -92,6 +92,7 @@ class TransformerTrainingStrategy(TrainingStrategy):
         val_loader: torch.utils.data.DataLoader,
         config: ModelConfig,
         processor: Any,
+        resume: bool = False,
     ) -> BaseTrainer:
         """Create transformer trainer."""
         return TransformerTrainer(

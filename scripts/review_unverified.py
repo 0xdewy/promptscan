@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Interactive review of unverified user submissions.
-Presents each submission, asks for verification, and moves to main prompts.parquet.
+Presents each submission, asks for verification, and moves to main merged.parquet.
 """
 
 import pandas as pd
@@ -33,7 +33,7 @@ class UnverifiedReviewer:
     def __init__(
         self,
         unverified_path: str = "website/api/data/unverified_user_submissions.parquet",
-        prompts_path: str = "data/prompts.parquet",
+        prompts_path: str = "data/merged.parquet",
         progress_file: str = ".reviewed_ids.json",
     ):
         """
@@ -41,7 +41,7 @@ class UnverifiedReviewer:
 
         Args:
             unverified_path: Path to unverified submissions parquet file
-            prompts_path: Path to main prompts parquet file
+            prompts_path: Path to main merged parquet file
             progress_file: File to track reviewed IDs
         """
         self.unverified_path = Path(unverified_path)
@@ -417,8 +417,8 @@ def main():
     )
     parser.add_argument(
         "--prompts",
-        default="data/prompts.parquet",
-        help="Path to main prompts parquet file",
+        default="data/merged.parquet",
+        help="Path to main merged parquet file",
     )
     parser.add_argument(
         "--progress",

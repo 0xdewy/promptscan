@@ -13,13 +13,13 @@ class ModelConfig:
     """Configuration for model training and inference."""
 
     # Model type
-    model_type: Literal["cnn", "lstm", "transformer", "ensemble"] = "cnn"
+    model_type: Literal["cnn", "lstm", "transformer", "deberta", "ensemble"] = "cnn"
 
     # Training parameters
     epochs: int = 20
     batch_size: int = 16
     learning_rate: float = 1e-3
-    patience: int = 3  # Early stopping patience
+    patience: int = 5  # Early stopping patience
 
     # Device configuration
     device: Literal["cpu", "cuda", "auto"] = "auto"
@@ -32,13 +32,19 @@ class ModelConfig:
     # Model-specific parameters
     embedding_dim: int = 64
     num_filters: int = 50
+    deberta_model: str = "microsoft/deberta-v3-small"
     hidden_dim: int = 128
     num_layers: int = 2
     dropout: float = 0.3
 
     # Transformer-specific
     transformer_model: str = "distilbert-base-uncased"
-    max_length: int = 128
+    max_length: int = 256
+
+    # Loss function configuration
+    loss_type: Literal["cross_entropy", "focal"] = "focal"
+    focal_gamma: float = 2.0  # Focus parameter for focal loss
+    use_class_weights: bool = True  # Automatically compute class weights
 
     # Ensemble configuration
     voting_strategy: Literal["majority", "weighted", "confidence", "soft"] = "majority"
@@ -95,14 +101,13 @@ class DataConfig:
     """Configuration for data handling."""
 
     # Data paths
-    # NOTE: Static split files have been consolidated into prompts.parquet
     model_dir: Path = field(default_factory=lambda: Path("models"))
     prompts_path: Path = field(
-        default_factory=lambda: Path("data/prompts.parquet")
-    )  # Consolidated dataset
+        default_factory=lambda: Path("data/merged.parquet")
+    )  # Canonical data source
 
     # Data processing
-    min_freq: int = 2
+    min_freq: int = 5
     test_size: float = 0.2
     val_size: float = 0.1
     random_state: int = 42
@@ -206,19 +211,9 @@ class AppConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict) -> "AppConfig":
         """Create configuration from dictionary."""
-        # Extract nested configurations
         model_dict = config_dict.get("model", {})
         data_dict = config_dict.get("data", {})
         inference_dict = config_dict.get("inference", {})
-
-        # Convert string paths to Path objects
-        for key in ["train_path", "val_path", "test_path", "model_dir"]:
-            if key in data_dict and isinstance(data_dict[key], str):
-                data_dict[key] = Path(data_dict[key])
-
-        for key in ["cnn_model", "lstm_model", "transformer_model"]:
-            if key in inference_dict and isinstance(inference_dict[key], str):
-                inference_dict[key] = Path(inference_dict[key])
 
         if "cache_dir" in config_dict and isinstance(config_dict["cache_dir"], str):
             config_dict["cache_dir"] = Path(config_dict["cache_dir"])
@@ -235,23 +230,47 @@ class AppConfig:
     def to_dict(self) -> Dict:
         """Convert configuration to dictionary."""
         return {
-            "model_type": self.model_type,
-            "epochs": self.epochs,
-            "batch_size": self.batch_size,
-            "learning_rate": self.learning_rate,
-            "patience": self.patience,
-            "device": self.device,
-            "use_amp": self.use_amp,
-            "grad_accumulation_steps": self.grad_accumulation_steps,
-            "grad_clip": self.grad_clip,
-            "embedding_dim": self.embedding_dim,
-            "num_filters": self.num_filters,
-            "hidden_dim": self.hidden_dim,
-            "num_layers": self.num_layers,
-            "dropout": self.dropout,
-            "transformer_model": self.transformer_model,
-            "max_length": self.max_length,
-            "voting_strategy": self.voting_strategy,
+            "model": {
+                "model_type": self.model.model_type,
+                "epochs": self.model.epochs,
+                "batch_size": self.model.batch_size,
+                "learning_rate": self.model.learning_rate,
+                "patience": self.model.patience,
+                "device": self.model.device,
+                "use_amp": self.model.use_amp,
+                "grad_accumulation_steps": self.model.grad_accumulation_steps,
+                "grad_clip": self.model.grad_clip,
+                "embedding_dim": self.model.embedding_dim,
+                "num_filters": self.model.num_filters,
+                "hidden_dim": self.model.hidden_dim,
+                "num_layers": self.model.num_layers,
+                "dropout": self.model.dropout,
+                "transformer_model": self.model.transformer_model,
+                "max_length": self.model.max_length,
+                "voting_strategy": self.model.voting_strategy,
+            },
+            "data": {
+                "model_dir": self.data.model_dir,
+                "prompts_path": self.data.prompts_path,
+                "min_freq": self.data.min_freq,
+                "test_size": self.data.test_size,
+                "val_size": self.data.val_size,
+                "random_state": self.data.random_state,
+            },
+            "inference": {
+                "cnn_model": self.inference.cnn_model,
+                "lstm_model": self.inference.lstm_model,
+                "transformer_model": self.inference.transformer_model,
+                "batch_size": self.inference.batch_size,
+                "confidence_threshold": self.inference.confidence_threshold,
+                "max_text_length": self.inference.max_text_length,
+                "show_probabilities": self.inference.show_probabilities,
+                "show_confidence": self.inference.show_confidence,
+                "output_format": self.inference.output_format,
+            },
+            "debug": self.debug,
+            "log_level": self.log_level,
+            "cache_dir": self.cache_dir,
         }
 
 
