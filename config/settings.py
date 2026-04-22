@@ -16,9 +16,9 @@ TESTS_DIR = BASE_DIR / "tests"
 MODEL_PATH = MODELS_DIR / "best_model"
 
 # Parquet data paths
-# NOTE: Static split files are deprecated and have been consolidated
-# Training uses prompts.parquet with dynamic splits
-PROMPTS_PARQUET_PATH = DATA_DIR / "prompts.parquet"  # Consolidated dataset
+# NOTE: Static split files are deprecated
+# Training uses merged.parquet with dynamic splits
+MERGED_PARQUET_PATH = DATA_DIR / "merged.parquet"  # Canonical data source
 FEEDBACK_PARQUET_PATH = (
     DATA_DIR / "unverified_user_submissions.parquet"
 )  # User feedback

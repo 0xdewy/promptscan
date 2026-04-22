@@ -215,8 +215,8 @@ def save_to_parquet(df: pd.DataFrame, filepath: Path) -> None:
 
 def main():
     """Main function."""
-    print("⚠️  NOTE: This script creates static split files which are deprecated.")
-    print("   Modern training uses prompts.parquet with dynamic splits.")
+    print("NOTE: This script creates static split files which are deprecated.")
+    print("   Modern training uses merged.parquet with dynamic splits.")
     print(
         "   The generated train/val/test.parquet files are for backward compatibility only."
     )
@@ -329,7 +329,7 @@ def main():
         (db_path, backup_dir / "prompts.db"),
         (external_dir, backup_dir / "external"),
         (processed_dir, backup_dir / "processed"),
-        (data_dir / "prompts.parquet", backup_dir / "prompts.parquet"),
+        (data_dir / "merged.parquet", backup_dir / "merged.parquet"),
         (data_dir / "prompts.db.backup", backup_dir / "prompts.db.backup"),
     ]
 

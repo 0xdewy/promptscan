@@ -44,8 +44,8 @@ dataset_info:
   - config_name: dynamic
     data_files:
     - split: full
-      path: prompts.parquet
-    note: Modern training uses prompts.parquet with dynamic splits (80% train, 10% validation, 10% test)
+      path: merged.parquet
+    note: Modern training uses merged.parquet with dynamic splits (80% train, 10% validation, 10% test)
 tags:
 - prompt-injection
 - ai-safety
@@ -71,7 +71,7 @@ A comprehensive dataset of 17,195 text prompts labeled for prompt injection dete
 ### Enhanced Dataset Features
 The dataset can be enhanced through batch import features:
 - **GitHub Integration**: Import safe documentation from repositories to reduce false positives
-- **Dynamic Splits**: Training automatically creates fresh splits from `data/prompts.parquet`
+- **Dynamic Splits**: Training automatically creates fresh splits from `data/merged.parquet`
 - **False Positive Reduction**: Importing technical documentation addresses 86.4% false positive rate on README.md files and 93.8% on model_card.md files
 
 ### Supported Tasks

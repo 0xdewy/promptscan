@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+    from huggingface_hub import HfApi, hf_hub_download
     from huggingface_hub.utils import HfHubHTTPError
 
     HF_AVAILABLE = True
@@ -48,13 +48,9 @@ def download_model_from_hf(
     if cache_dir is None:
         cache_dir = os.environ.get("PROMPTSCAN_CACHE_DIR")
         if not cache_dir:
-            # Use HF cache by default
-            cache_dir = os.environ.get(
-                "HF_HOME", os.path.expanduser("~/.cache/huggingface")
-            )
+            cache_dir = os.path.expanduser("~/.cache/promptscan")
 
-    # Create cache directory
-    cache_path = Path(cache_dir) / "promptscan" / model_name
+    cache_path = Path(cache_dir) / "models" / model_name
     cache_path.mkdir(parents=True, exist_ok=True)
 
     # Determine which files to download
@@ -90,17 +86,13 @@ def download_model_from_hf(
             force_download=force_download,
         )
 
-        # Copy to local models directory for easier access
-        local_models_dir = Path("models")
-        local_models_dir.mkdir(exist_ok=True)
+        cache_safetensors = cache_path / f"{model_name}.safetensors"
+        cache_config = cache_path / f"{model_name}.config.json"
 
-        local_safetensors = local_models_dir / f"{model_name}.safetensors"
-        local_config = local_models_dir / f"{model_name}.config.json"
+        shutil.copy2(safetensors_path, cache_safetensors)
+        shutil.copy2(config_path, cache_config)
 
-        shutil.copy2(safetensors_path, local_safetensors)
-        shutil.copy2(config_path, local_config)
-
-        return local_models_dir / model_name
+        return cache_path / model_name
 
     except Exception as e:
         print(f"Error downloading model from Hugging Face Hub: {e}")

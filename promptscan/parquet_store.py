@@ -12,7 +12,7 @@ import pandas as pd
 class ParquetDataStore:
     """Parquet-based data store for prompt injection data."""
 
-    def __init__(self, parquet_path: str = "data/prompts.parquet"):
+    def __init__(self, parquet_path: str = "data/merged.parquet"):
         """
         Initialize the parquet data store.
 
@@ -21,12 +21,12 @@ class ParquetDataStore:
         """
         self.parquet_path = Path(parquet_path)
         self._data = None
+        self._text_index = None
         self._load_data()
 
     def _load_data(self) -> None:
         """Load data from parquet file into memory."""
         if not self.parquet_path.exists():
-            # Create empty DataFrame with correct schema
             self._data = pd.DataFrame(
                 {
                     "id": pd.Series([], dtype="int64"),
@@ -34,17 +34,26 @@ class ParquetDataStore:
                     "is_injection": pd.Series([], dtype="bool"),
                 }
             )
-            # Save empty DataFrame to create the file
             self._save_data()
         else:
             self._data = pd.read_parquet(self.parquet_path)
-            # Ensure the DataFrame has an 'id' column
             if "id" not in self._data.columns:
-                # Add an 'id' column with sequential numbers
                 self._data = self._data.reset_index(drop=True)
                 self._data["id"] = self._data.index + 1
-                # Save with the new ID column
                 self._save_data()
+        self._build_text_index()
+
+    def _build_text_index(self) -> None:
+        """Build a set index of normalized text + is_injection for fast lookup."""
+        self._text_index = set()
+        if len(self._data) > 0:
+            for _, row in self._data.iterrows():
+                normalized = (row["text"].strip().lower(), row["is_injection"])
+                self._text_index.add(normalized)
+
+    def _invalidate_index(self) -> None:
+        """Mark text index as needing rebuild."""
+        self._text_index = None
 
     def _save_data(self) -> None:
         """Save data to parquet file."""
@@ -52,7 +61,7 @@ class ParquetDataStore:
         self._data.to_parquet(self.parquet_path, index=False)
 
     def _get_next_id(self) -> str:
-        """Get the next available ID."""
+        """Get the next available ID for a new prompt."""
         import uuid
 
         return str(uuid.uuid4())
@@ -68,18 +77,11 @@ class ParquetDataStore:
         Returns:
             True if prompt exists, False otherwise
         """
-        if len(self._data) == 0:
-            return False
+        if self._text_index is None:
+            self._build_text_index()
 
-        # Normalize text for comparison (lowercase, strip whitespace)
-        normalized_text = text.strip().lower()
-
-        # Check for exact match on text and label
-        mask = (self._data["text"].str.strip().str.lower() == normalized_text) & (
-            self._data["is_injection"] == is_injection
-        )
-
-        return mask.any()
+        normalized = (text.strip().lower(), is_injection)
+        return normalized in self._text_index
 
     def add_prompt(self, text: str, is_injection: bool) -> Optional[str]:
         """
@@ -103,6 +105,7 @@ class ParquetDataStore:
 
         self._data = pd.concat([self._data, new_row], ignore_index=True)
         self._save_data()
+        self._invalidate_index()
 
         return prompt_id
 
@@ -118,7 +121,7 @@ class ParquetDataStore:
             List of IDs for the added prompts
         """
         if not prompts:
-            return []
+            return [], 0
 
         import uuid
 
@@ -158,6 +161,7 @@ class ParquetDataStore:
             new_df = pd.DataFrame(new_data)
             self._data = pd.concat([self._data, new_df], ignore_index=True)
             self._save_data()
+            self._invalidate_index()
 
         # Return tuple with added IDs and skipped count
         return added_ids, skipped_count
@@ -283,6 +287,7 @@ class ParquetDataStore:
             }
         )
         self._save_data()
+        self._invalidate_index()
 
     def export_to_dataframe(self) -> pd.DataFrame:
         """
@@ -307,30 +312,42 @@ class ParquetDataStore:
 
         # Generate IDs if not present
         if "id" not in df.columns:
-            start_id = self._get_next_id()
+            import uuid
+
             df = df.copy()
-            df["id"] = range(start_id, start_id + len(df))
+            df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
 
         # Ensure correct dtypes
-        df = df.astype({"id": "int64", "text": "string", "is_injection": "bool"})
+        df = df.astype({"text": "string", "is_injection": "bool"})
 
         # Append to existing data
         self._data = pd.concat([self._data, df], ignore_index=True)
         self._save_data()
 
     def get_training_splits(
-        self, train_ratio: float = 0.8, val_ratio: float = 0.1
+        self,
+        train_ratio: float = 0.8,
+        val_ratio: float = 0.1,
+        max_samples: int = 0,
+        max_samples_per_source: int = 0,
     ) -> Dict[str, pd.DataFrame]:
         """
-        Get train/validation/test splits.
+        Get train/validation/test splits with stratification.
+
+        Uses stratified splitting to maintain consistent class distribution
+        across train/val/test sets, which is critical for imbalanced datasets.
 
         Args:
             train_ratio: Ratio for training set
             val_ratio: Ratio for validation set
+            max_samples: Maximum number of samples to use (0 = use all)
+            max_samples_per_source: Cap samples per source to reduce source dominance (0 = no cap)
 
         Returns:
             Dictionary with 'train', 'val', 'test' DataFrames
         """
+        from sklearn.model_selection import train_test_split
+
         if len(self._data) == 0:
             return {
                 "train": pd.DataFrame(),
@@ -338,17 +355,57 @@ class ParquetDataStore:
                 "test": pd.DataFrame(),
             }
 
-        # Shuffle the data
-        df_shuffled = self._data.sample(frac=1, random_state=42).reset_index(drop=True)
+        df = self._data
 
-        # Calculate split sizes
-        n_total = len(df_shuffled)
-        n_train = int(train_ratio * n_total)
-        n_val = int(val_ratio * n_total)
+        # Per-source cap: prevents any single source from dominating training
+        if max_samples_per_source > 0 and "source" in df.columns:
+            before = len(df)
+            capped = []
+            for src in df["source"].unique():
+                src_df = df[df["source"] == src]
+                if len(src_df) > max_samples_per_source:
+                    src_df = src_df.sample(max_samples_per_source, random_state=42)
+                capped.append(src_df)
+            df = pd.concat(capped, ignore_index=True)
+            print(f"  Per-source cap ({max_samples_per_source:,}): {before:,} → {len(df):,} rows")
+            for src in df["source"].unique():
+                grp = df[df["source"] == src]
+                inj = grp["is_injection"].sum()
+                print(f"    {src}: {len(grp):,} ({inj} inj / {len(grp)-inj} safe)")
 
-        # Split the data
-        train_df = df_shuffled.iloc[:n_train]
-        val_df = df_shuffled.iloc[n_train : n_train + n_val]
-        test_df = df_shuffled.iloc[n_train + n_val :]
+        if max_samples > 0 and max_samples < len(self._data):
+            # Use stratified sampling when limiting samples
+            df, _ = train_test_split(
+                self._data,
+                train_size=max_samples,
+                stratify=self._data["is_injection"],
+                random_state=42,
+            )
+            df = df.reset_index(drop=True)
 
-        return {"train": train_df, "val": val_df, "test": test_df}
+        # Stratified split to maintain class balance across splits
+        # First split: train vs (val + test)
+        test_val_ratio = 1 - train_ratio
+        train_df, temp_df = train_test_split(
+            df,
+            test_size=test_val_ratio,
+            stratify=df["is_injection"],
+            random_state=42,
+        )
+
+        # Second split: val vs test (from the temp set)
+        # val_ratio is relative to total, so we need to compute relative to temp
+        # val_ratio / test_val_ratio gives us the proportion of temp that should be val
+        val_proportion = val_ratio / test_val_ratio if test_val_ratio > 0 else 0.5
+        val_df, test_df = train_test_split(
+            temp_df,
+            train_size=val_proportion,
+            stratify=temp_df["is_injection"],
+            random_state=42,
+        )
+
+        return {
+            "train": train_df.reset_index(drop=True),
+            "val": val_df.reset_index(drop=True),
+            "test": test_df.reset_index(drop=True),
+        }

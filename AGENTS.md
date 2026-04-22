@@ -314,7 +314,7 @@ ls -la models/*.safetensors models/*.config.json
 ### File Locations
 - **Package models**: `promptscan/models/checkpoints/` (small demo models)
 - **Large models**: `models/` directory (250MB+ each)
-- **Data**: `data/prompts.parquet` (main dataset)
+- **Data**: `data/merged.parquet` (main dataset)
 - **Build artifacts**: `dist/`, `build/`, `promptscan.egg-info/`
 
 ## Troubleshooting

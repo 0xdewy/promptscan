@@ -9,10 +9,58 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from ..config import ModelConfig
 from ..utils.device import get_device
+
+
+class FocalLoss(nn.Module):
+    """Focal Loss for addressing class imbalance.
+
+    Reference: Lin et al. "Focal Loss for Dense Object Detection"
+    https://arxiv.org/abs/1708.02002
+    """
+
+    def __init__(self, alpha: Optional[torch.Tensor] = None, gamma: float = 2.0, reduction: str = "mean"):
+        """Initialize Focal Loss.
+
+        Args:
+            alpha: Class weights tensor of shape (num_classes,). If None, all classes weighted equally.
+            gamma: Focusing parameter. Default is 2.0 as recommended in the paper.
+            reduction: Specifies the reduction to apply to the output ('none', 'mean', 'sum').
+        """
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Compute focal loss.
+
+        Args:
+            inputs: Predicted logits of shape (batch_size, num_classes)
+            targets: Ground truth labels of shape (batch_size,)
+
+        Returns:
+            Focal loss value
+        """
+        ce_loss = F.cross_entropy(inputs, targets, reduction="none")
+        pt = torch.exp(-ce_loss)
+        focal_loss = (1 - pt) ** self.gamma * ce_loss
+
+        if self.alpha is not None:
+            if self.alpha.device != inputs.device:
+                self.alpha = self.alpha.to(inputs.device)
+            alpha_t = self.alpha[targets]
+            focal_loss = alpha_t * focal_loss
+
+        if self.reduction == "mean":
+            return focal_loss.mean()
+        elif self.reduction == "sum":
+            return focal_loss.sum()
+        return focal_loss
 
 
 class BaseTrainer(ABC):
@@ -44,8 +92,21 @@ class BaseTrainer(ABC):
         self.val_loader = val_loader
         self.processor = processor
 
+        # Compute class weights from training data if enabled
+        class_weights = None
+        if getattr(config, 'use_class_weights', True):
+            class_weights = self._compute_class_weights()
+
         # Loss function
-        self.criterion = nn.CrossEntropyLoss()
+        loss_type = getattr(config, 'loss_type', 'focal')
+        if loss_type == 'focal':
+            focal_gamma = getattr(config, 'focal_gamma', 2.0)
+            self.criterion = FocalLoss(alpha=class_weights, gamma=focal_gamma)
+        else:
+            if class_weights is not None:
+                self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+            else:
+                self.criterion = nn.CrossEntropyLoss()
 
         # Optimizer
         self.optimizer = self._create_optimizer()
@@ -58,7 +119,7 @@ class BaseTrainer(ABC):
         self.grad_accumulation_steps = getattr(config, "grad_accumulation_steps", 1)
 
         if self.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
+            self.scaler = torch.amp.GradScaler('cuda')
         else:
             self.scaler = None
 
@@ -67,6 +128,42 @@ class BaseTrainer(ABC):
         self.best_val_acc = 0.0
         self.patience_counter = 0
         self.history: List[Dict[str, float]] = []
+
+    def _compute_class_weights(self) -> Optional[torch.Tensor]:
+        """Compute class weights based on training data distribution.
+
+        Returns:
+            Tensor of class weights for imbalanced data, or None if balanced.
+        """
+        if self.train_loader is None:
+            return None
+
+        total = 0
+        class_counts = {}
+
+        for batch in self.train_loader:
+            if "label" not in batch:
+                continue
+            labels = batch["label"]
+            for label in labels:
+                label_val = label.item() if torch.is_tensor(label) else label
+                class_counts[label_val] = class_counts.get(label_val, 0) + 1
+                total += 1
+
+        if total == 0 or len(class_counts) < 2:
+            return None
+
+        # Compute weights inversely proportional to class frequency
+        num_classes = max(class_counts.keys()) + 1
+        weights = torch.zeros(num_classes)
+        for cls, count in class_counts.items():
+            # Weight = total / (num_classes * count)
+            weights[cls] = total / (num_classes * count)
+
+        # Normalize so max weight is 1.0
+        weights = weights / weights.max()
+
+        return weights.to(self.device)
 
     @abstractmethod
     def _create_optimizer(self) -> torch.optim.Optimizer:
@@ -113,7 +210,7 @@ class BaseTrainer(ABC):
 
             # Mixed precision training
             if self.use_amp and self.scaler is not None:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
 
@@ -144,7 +241,10 @@ class BaseTrainer(ABC):
                 # Gradient clipping (optional)
                 if hasattr(self.config, "grad_clip") and self.config.grad_clip > 0:
                     if self.use_amp and self.scaler is not None:
-                        self.scaler.unscale_(self.optimizer)
+                        try:
+                            self.scaler.unscale_(self.optimizer)
+                        except ValueError:
+                            pass
 
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), self.config.grad_clip
@@ -160,16 +260,22 @@ class BaseTrainer(ABC):
                 # Zero gradients
                 self.optimizer.zero_grad()
 
-                # Update learning rate scheduler
+                # Update learning rate scheduler (skip ReduceLROnPlateau - it's stepped after validation)
                 if self.scheduler is not None:
-                    self.scheduler.step()
+                    from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+                    if not isinstance(self.scheduler, ReduceLROnPlateau):
+                        self.scheduler.step()
 
         # Handle remaining gradients if not divisible by accumulation steps
         if len(self.train_loader) % self.grad_accumulation_steps != 0:
             # Gradient clipping (optional)
             if hasattr(self.config, "grad_clip") and self.config.grad_clip > 0:
                 if self.use_amp and self.scaler is not None:
-                    self.scaler.unscale_(self.optimizer)
+                    try:
+                        self.scaler.unscale_(self.optimizer)
+                    except ValueError:
+                        pass
 
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.config.grad_clip
@@ -182,9 +288,12 @@ class BaseTrainer(ABC):
             else:
                 self.optimizer.step()
 
-            # Update learning rate scheduler
+            # Update learning rate scheduler (skip ReduceLROnPlateau - it's stepped after validation)
             if self.scheduler is not None:
-                self.scheduler.step()
+                from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+                if not isinstance(self.scheduler, ReduceLROnPlateau):
+                    self.scheduler.step()
 
         # Calculate metrics
         avg_loss = total_loss / len(self.train_loader)
@@ -214,7 +323,7 @@ class BaseTrainer(ABC):
 
                 # Mixed precision inference
                 if self.use_amp:
-                    with torch.cuda.amp.autocast():
+                    with torch.amp.autocast('cuda'):
                         outputs = self.model(inputs)
                         loss = self.criterion(outputs, labels)
                 else:
@@ -263,7 +372,7 @@ class BaseTrainer(ABC):
 
                 # Mixed precision inference
                 if self.use_amp:
-                    with torch.cuda.amp.autocast():
+                    with torch.amp.autocast('cuda'):
                         outputs = self.model(inputs)
                         loss = self.criterion(outputs, labels)
                 else:
@@ -271,18 +380,23 @@ class BaseTrainer(ABC):
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
 
+                # Get probabilities for positive class
+                probs = torch.softmax(outputs, dim=1)[:, 1]
+
                 # Update metrics
                 total_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
-                correct += (predicted == labels).sum().item()
 
                 # Store for additional metrics
-                all_predictions.extend(predicted.cpu().numpy())
+                all_predictions.extend(probs.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
-        # Calculate basic metrics
+        # Calculate basic metrics with default threshold 0.5
         avg_loss = total_loss / len(data_loader) if len(data_loader) > 0 else 0.0
+        all_probs_tensor = torch.tensor(all_predictions)
+        all_labels_tensor = torch.tensor(all_labels)
+        default_predictions = (all_probs_tensor > 0.5).long()
+        correct = (default_predictions == all_labels_tensor).sum().item()
         accuracy = correct / total if total > 0 else 0.0
 
         # Calculate additional metrics if we have data
@@ -296,21 +410,34 @@ class BaseTrainer(ABC):
             try:
                 from sklearn.metrics import f1_score, precision_score, recall_score
 
+                binary_predictions = (all_probs_tensor > 0.5).long().numpy()
                 precision = precision_score(
-                    all_labels, all_predictions, average="binary", zero_division=0
+                    all_labels, binary_predictions, average="binary", zero_division=0
                 )
                 recall = recall_score(
-                    all_labels, all_predictions, average="binary", zero_division=0
+                    all_labels, binary_predictions, average="binary", zero_division=0
                 )
                 f1 = f1_score(
-                    all_labels, all_predictions, average="binary", zero_division=0
+                    all_labels, binary_predictions, average="binary", zero_division=0
                 )
+
+                # Find best threshold for F1
+                best_threshold = 0.5
+                best_f1 = f1
+                for threshold in torch.arange(0.1, 0.9, 0.05):
+                    preds_at_thresh = (all_probs_tensor > threshold).long().numpy()
+                    f1_at_thresh = f1_score(all_labels, preds_at_thresh, average="binary", zero_division=0)
+                    if f1_at_thresh > best_f1:
+                        best_f1 = f1_at_thresh
+                        best_threshold = threshold.item()
 
                 metrics.update(
                     {
                         "precision": precision,
                         "recall": recall,
                         "f1_score": f1,
+                        "best_threshold": best_threshold,
+                        "best_f1": best_f1,
                     }
                 )
             except ImportError:
@@ -349,6 +476,13 @@ class BaseTrainer(ABC):
             # Combine metrics
             metrics = {**train_metrics, **val_metrics}
             self.history.append(metrics)
+
+            # Step ReduceLROnPlateau scheduler if present
+            if self.scheduler is not None:
+                from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+                if isinstance(self.scheduler, ReduceLROnPlateau):
+                    self.scheduler.step(val_metrics["val_accuracy"])
 
             # Print progress
             self._print_epoch_progress(epoch + 1, epochs, metrics)

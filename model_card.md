@@ -136,7 +136,7 @@ This model is designed to enhance AI safety by detecting malicious prompt inject
 - **Learning Rate**: 0.001
 - **Optimizer**: AdamW
 - **Loss Function**: Cross-Entropy
-- **Data Source**: Automatically loads from `data/prompts.parquet` with fresh splits (80% train, 10% validation, 10% test)
+- **Data Source**: Automatically loads from `data/merged.parquet` with fresh splits (80% train, 10% validation, 10% test)
 - **Enhanced Training**: Supports batch import of safe documentation from GitHub repositories to reduce false positives
 
 ## Citation

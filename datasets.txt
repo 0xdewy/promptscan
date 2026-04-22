@@ -1,0 +1,4 @@
+https://huggingface.co/datasets/MohamedRashad/ChatGPT-prompts
+https://huggingface.co/datasets/pvduy/70k_evol_code_prompts
+https://huggingface.co/datasets/marketeam/marketing_user_prompts_unfiltered
+https://huggingface.co/datasets/tatsu-lab/alpaca

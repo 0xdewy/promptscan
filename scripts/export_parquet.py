@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def load_from_parquet(parquet_path: str = "data/prompts.parquet") -> pd.DataFrame:
+def load_from_parquet(parquet_path: str = "data/merged.parquet") -> pd.DataFrame:
     """Load data from parquet file."""
     # First try the specified path
     path = Path(parquet_path)
@@ -25,7 +25,7 @@ def load_from_parquet(parquet_path: str = "data/prompts.parquet") -> pd.DataFram
         import importlib.resources
 
         with importlib.resources.path("promptscan", "data") as data_dir:
-            package_path = data_dir / "prompts.parquet"
+            package_path = data_dir / "merged.parquet"
             if package_path.exists():
                 df = pd.read_parquet(package_path)
                 print(f"Loaded {len(df)} records from package data")
@@ -129,10 +129,10 @@ def export_to_parquet_split(
     """Export data as train/val/test parquet splits.
 
     NOTE: Static split files are deprecated. Modern training uses
-    prompts.parquet with dynamic splits.
+    merged.parquet with dynamic splits.
     """
-    print("⚠️  NOTE: Creating static split files which are deprecated.")
-    print("   Modern training uses prompts.parquet with dynamic splits.")
+    print("NOTE: Creating static split files which are deprecated.")
+    print("   Modern training uses merged.parquet with dynamic splits.")
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -181,7 +181,7 @@ def main():
     parser.add_argument(
         "--parquet",
         type=str,
-        default="data/prompts.parquet",
+        default="data/merged.parquet",
         help="Input parquet file path",
     )
     parser.add_argument(

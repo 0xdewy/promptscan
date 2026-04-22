@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Consolidate all parquet files into a single prompts.parquet file.
+Consolidate all parquet files into a single merged.parquet file.
 """
 
 import pandas as pd
@@ -66,6 +66,7 @@ def consolidate_data(data_dir: Path = Path("data")) -> pd.DataFrame:
 
     # Files to process (excluding the consolidated output and unverified submissions)
     files_to_process = [
+        "processed.parquet",   # output of merge_hf_datasets.py
         "prompts_full.parquet",
         "unified_prompts.parquet",
         "train.parquet",
@@ -75,6 +76,20 @@ def consolidate_data(data_dir: Path = Path("data")) -> pd.DataFrame:
         "val_split.parquet",
         "test_split.parquet",
     ]
+
+    # Preserve existing merged.parquet data (may contain user-submitted prompts
+    # not present in any of the above files). main() renames merged.parquet to
+    # merged_backup.parquet before calling this function, so check both names.
+    for merged_name in ("merged_backup.parquet", "merged.parquet"):
+        existing_merged = data_dir / merged_name
+        if existing_merged.exists():
+            try:
+                df = load_and_normalize(existing_merged)
+                all_data.append(df)
+                print(f"  ✓ Loaded {len(df)} rows from {merged_name}")
+            except Exception as e:
+                print(f"  ✗ Error loading {merged_name}: {e}")
+            break
 
     for filename in files_to_process:
         filepath = data_dir / filename
@@ -86,15 +101,15 @@ def consolidate_data(data_dir: Path = Path("data")) -> pd.DataFrame:
             except Exception as e:
                 print(f"  ✗ Error loading {filename}: {e}")
 
-    # Also include the current prompts.parquet if it exists
+    # Also include the legacy prompts.parquet if it exists (for backward compatibility)
     prompts_file = data_dir / "prompts.parquet"
     if prompts_file.exists():
         try:
             df = load_and_normalize(prompts_file)
             all_data.append(df)
-            print(f"  ✓ Loaded {len(df)} rows from prompts.parquet")
+            print(f"  ✓ Loaded {len(df)} rows from legacy prompts.parquet")
         except Exception as e:
-            print(f"  ✗ Error loading prompts.parquet: {e}")
+            print(f"  ✗ Error loading legacy prompts.parquet: {e}")
 
     if not all_data:
         raise ValueError("No data files found to consolidate")
@@ -163,7 +178,7 @@ def backup_original_files(data_dir: Path) -> None:
 
     for filepath in data_dir.glob("*.parquet"):
         if (
-            filepath.name != "prompts.parquet"
+            filepath.name != "merged.parquet"
             and filepath.name != "unverified_user_submissions.parquet"
         ):
             backup_path = backup_dir / filepath.name
@@ -176,10 +191,10 @@ def backup_original_files(data_dir: Path) -> None:
 
 
 def cleanup_redundant_files(data_dir: Path) -> None:
-    """Remove redundant parquet files (keeping only prompts.parquet)."""
+    """Remove redundant parquet files (keeping only merged.parquet)."""
     print("\nCleaning up redundant files...")
 
-    files_to_keep = {"prompts.parquet", "unverified_user_submissions.parquet"}
+    files_to_keep = {"merged.parquet", "unverified_user_submissions.parquet"}
 
     for filepath in data_dir.glob("*.parquet"):
         if filepath.name not in files_to_keep:
@@ -197,15 +212,15 @@ def main():
     print("=" * 60)
 
     data_dir = Path("data")
-    output_path = data_dir / "prompts.parquet"
+    output_path = data_dir / "merged.parquet"
 
-    # Create backup of current prompts.parquet if it exists
+    # Create backup of current merged.parquet if it exists
     if output_path.exists():
-        backup_path = data_dir / "prompts_backup.parquet"
+        backup_path = data_dir / "merged_backup.parquet"
         if backup_path.exists():
             backup_path.unlink()
         output_path.rename(backup_path)
-        print(f"✓ Backed up existing prompts.parquet to prompts_backup.parquet")
+        print(f"✓ Backed up existing merged.parquet to merged_backup.parquet")
 
     try:
         # Consolidate all data
@@ -232,11 +247,11 @@ def main():
 
     except Exception as e:
         print(f"\n❌ Consolidation failed: {e}")
-        print("Restoring original prompts.parquet...")
-        backup_path = data_dir / "prompts_backup.parquet"
+        print("Restoring original merged.parquet...")
+        backup_path = data_dir / "merged_backup.parquet"
         if backup_path.exists():
             backup_path.rename(output_path)
-            print("✓ Restored original prompts.parquet")
+            print("✓ Restored original merged.parquet")
         sys.exit(1)
 
 
