@@ -83,13 +83,14 @@ class ParquetDataStore:
         normalized = (text.strip().lower(), is_injection)
         return normalized in self._text_index
 
-    def add_prompt(self, text: str, is_injection: bool) -> Optional[str]:
+    def add_prompt(self, text: str, is_injection: bool, source: Optional[str] = None) -> Optional[str]:
         """
         Add a single prompt to the store.
 
         Args:
             text: The prompt text
             is_injection: Whether it's an injection prompt
+            source: Optional source identifier for tracking data provenance
 
         Returns:
             The ID of the added prompt, or None if duplicate
@@ -99,9 +100,10 @@ class ParquetDataStore:
             return None
 
         prompt_id = self._get_next_id()
-        new_row = pd.DataFrame(
-            {"id": [prompt_id], "text": [text], "is_injection": [is_injection]}
-        )
+        row_data: dict = {"id": [prompt_id], "text": [text], "is_injection": [is_injection]}
+        if source is not None:
+            row_data["source"] = [source]
+        new_row = pd.DataFrame(row_data)
 
         self._data = pd.concat([self._data, new_row], ignore_index=True)
         self._save_data()

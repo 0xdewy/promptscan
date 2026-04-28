@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from ..models.cnn_model import SimpleCNN
 from ..models.lstm_model import LSTMModel
+from ..models.pretrained_model import PretrainedInjectionModel
 from ..models.transformer_model import TransformerModel
 from .voting import VotingStrategies
 
@@ -20,7 +21,7 @@ class EnsembleDetector:
         model_configs: List[Dict[str, Any]],
         voting_strategy: str = "majority",
         device: str = "cpu",
-        max_workers: int = 3,
+        max_workers: int = 4,
     ):
         """
         Initialize ensemble detector.
@@ -54,6 +55,12 @@ class EnsembleDetector:
                 model, processor = LSTMModel.load(checkpoint_path, device)
             elif model_type == "transformer":
                 model, processor = TransformerModel.load(checkpoint_path, device)
+            elif model_type == "pretrained":
+                try:
+                    model, processor = PretrainedInjectionModel.load(checkpoint_path, device)
+                except Exception as e:
+                    print(f"Warning: could not load pretrained model ({e}), skipping")
+                    continue
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
@@ -122,7 +129,7 @@ class EnsembleDetector:
     def from_pretrained(
         cls,
         model_dir: str = None,
-        voting_strategy: str = "majority",
+        voting_strategy: str = "weighted",
         device: str = "cpu",
     ) -> "EnsembleDetector":
         """
@@ -133,22 +140,16 @@ class EnsembleDetector:
         """
         from .. import get_model_path
 
-        expected_models = [
-            ("cnn", "cnn_best"),
-            ("lstm", "lstm_best"),
-            ("transformer", "transformer_best"),
+        local_models = [
+            ("cnn", "cnn_best", 0.10),
+            ("lstm", "lstm_best", 0.20),
+            ("transformer", "transformer_best", 0.30),
         ]
 
         model_configs = []
-        for model_type, model_name in expected_models:
+        for model_type, model_name, weight in local_models:
             try:
                 checkpoint_path = get_model_path(model_name)
-                if model_type == "lstm":
-                    weight = 0.5
-                elif model_type == "transformer":
-                    weight = 0.35
-                else:
-                    weight = 0.15
                 model_configs.append(
                     {
                         "type": model_type,
@@ -158,6 +159,15 @@ class EnsembleDetector:
                 )
             except FileNotFoundError:
                 print(f"Warning: {model_name} not found, skipping in ensemble")
+
+        # Add the pre-trained ProtectAI injection model (loads from HF Hub, no checkpoint needed)
+        model_configs.append(
+            {
+                "type": "pretrained",
+                "checkpoint_path": None,
+                "weight": 0.40,
+            }
+        )
 
         if not model_configs:
             raise FileNotFoundError(

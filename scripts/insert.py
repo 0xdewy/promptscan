@@ -88,9 +88,7 @@ def import_parquet_file(args, store):
     print(
         f"  🔴 {db_stats['injections']} injection prompts ({db_stats['injection_percentage']:.1f}%)"
     )
-    print(
-        f"  🟢 {db_stats['safe']} safe prompts ({db_stats['safe_percentage']:.1f}%)"
-    )
+    print(f"  🟢 {db_stats['safe']} safe prompts ({db_stats['safe_percentage']:.1f}%)")
 
 
 def batch_insert(args, store):
@@ -254,14 +252,16 @@ def interactive_insert(args, store):
 def text_insert(args, store):
     """Insert a single raw text prompt directly."""
     is_injection = args.label == "injection"
-    prompt_id = store.add_prompt(args.text, is_injection)
+    prompt_id = store.add_prompt(args.text, is_injection, source="cli_direct_insert")
     label_str = "injection" if is_injection else "safe"
     if prompt_id is None:
         print(f"⚠️  Duplicate — already exists as {label_str} prompt")
     else:
         print(f"✅ Added as {label_str} prompt (id: {prompt_id})")
         stats = store.get_statistics()
-        print(f"   Database: {stats['total']} total ({stats['injections']} inj / {stats['safe']} safe)")
+        print(
+            f"   Database: {stats['total']} total ({stats['injections']} inj / {stats['safe']} safe)"
+        )
 
 
 def main():
@@ -274,7 +274,9 @@ def main():
         help="Import prompts FROM a parquet file into the target database",
     )
     parser.add_argument(
-        "--text", "-t", help="Raw text to insert as a single prompt",
+        "--text",
+        "-t",
+        help="Raw text to insert as a single prompt",
     )
 
     source_group = parser.add_mutually_exclusive_group()
@@ -327,18 +329,20 @@ def main():
 
     if args.text:
         if not args.label:
-            print("❌ Error: --label is required with --text. Use --label safe or --label injection")
+            print(
+                "❌ Error: --label is required with --text. Use --label safe or --label injection"
+            )
             sys.exit(1)
         text_insert(args, store)
     elif args.import_from:
         import_parquet_file(args, store)
+    elif args.github or args.dir or (args.file and len(args.file) > 0):
+        batch_insert(args, store)
     elif args.label and Path(args.parquet).exists():
         args.import_from = args.parquet
         parquet_file = args.output if args.output else "data/merged.parquet"
         store = ParquetDataStore(parquet_file)
         import_parquet_file(args, store)
-    elif args.github or args.dir or (args.file and len(args.file) > 0):
-        batch_insert(args, store)
     else:
         interactive_insert(args, store)
 

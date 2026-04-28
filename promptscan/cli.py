@@ -569,8 +569,8 @@ Examples:
     parser.add_argument(
         "--voting-strategy",
         choices=["majority", "weighted", "confidence", "soft"],
-        default="majority",
-        help="Voting strategy for ensemble (default: majority)",
+        default="weighted",
+        help="Voting strategy for ensemble (default: weighted)",
     )
 
     parser.add_argument(

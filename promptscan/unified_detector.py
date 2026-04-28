@@ -10,6 +10,7 @@ from . import get_model_path
 from .ensemble.detector import EnsembleDetector
 from .models.cnn_model import SimpleCNN
 from .models.lstm_model import LSTMModel
+from .models.pretrained_model import PretrainedInjectionModel
 from .models.transformer_model import TransformerModel
 
 
@@ -39,7 +40,7 @@ class UnifiedDetector:
                 model_dir = os.path.dirname(str(cnn_path))
             self.detector = EnsembleDetector.from_pretrained(
                 model_dir=model_dir,
-                voting_strategy=kwargs.get("voting_strategy", "majority"),
+                voting_strategy=kwargs.get("voting_strategy", "weighted"),
                 device=self.device,
             )
         else:
@@ -63,6 +64,10 @@ class UnifiedDetector:
             elif model_type == "transformer":
                 self.model, self.processor = TransformerModel.load(
                     model_path, self.device
+                )
+            elif model_type == "pretrained":
+                self.model, self.processor = PretrainedInjectionModel.load(
+                    None, self.device
                 )
             else:
                 raise ValueError(f"Unknown model type: {model_type}")

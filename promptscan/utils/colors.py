@@ -97,7 +97,7 @@ class Colors:
     @classmethod
     def model_color(cls, model_idx):
         """Get color for model type based on index."""
-        colors = [cls.BLUE, cls.MAGENTA, cls.CYAN]
+        colors = [cls.BLUE, cls.MAGENTA, cls.CYAN, cls.GREEN]
         return colors[model_idx % len(colors)]
 
     @classmethod

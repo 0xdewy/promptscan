@@ -13,7 +13,7 @@ class ModelConfig:
     """Configuration for model training and inference."""
 
     # Model type
-    model_type: Literal["cnn", "lstm", "transformer", "deberta", "ensemble"] = "cnn"
+    model_type: Literal["cnn", "lstm", "transformer", "deberta", "ensemble", "pretrained"] = "cnn"
 
     # Training parameters
     epochs: int = 20
@@ -47,7 +47,7 @@ class ModelConfig:
     use_class_weights: bool = True  # Automatically compute class weights
 
     # Ensemble configuration
-    voting_strategy: Literal["majority", "weighted", "confidence", "soft"] = "majority"
+    voting_strategy: Literal["majority", "weighted", "confidence", "soft"] = "weighted"
 
     def validate(self) -> List[str]:
         """Validate configuration and return list of errors."""

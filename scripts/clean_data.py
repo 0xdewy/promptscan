@@ -74,7 +74,7 @@ def remove_suspicious_sources(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def filter_short_texts(df: pd.DataFrame, min_length: int = 10) -> pd.DataFrame:
+def filter_short_texts(df: pd.DataFrame, min_length: int = 3) -> pd.DataFrame:
     """Remove texts that are too short to carry meaningful signal."""
     print(f"\n=== FILTERING SHORT TEXTS (min {min_length} chars) ===")
     before = len(df)

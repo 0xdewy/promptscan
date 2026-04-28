@@ -241,7 +241,7 @@ def main():
         "--max-samples-per-source",
         type=int,
         default=0,
-        help="Cap samples per source to reduce source dominance (0 = no cap, recommended: 30000)",
+        help="Cap samples per source to reduce source dominance (0 = no cap, recommended: 10000)",
     )
 
     args = parser.parse_args()
