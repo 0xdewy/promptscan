@@ -6,29 +6,23 @@ import os
 
 import pytest
 
-from promptscan.detector import SimplePromptDetector
+import torch
+
 from promptscan.parquet_store import ParquetDataStore
-from promptscan.utils.text_processor import SimpleTextProcessor
+from promptscan.processors.word_processor import WordProcessor
 
 
 def test_text_processor():
     """Test the text processor."""
-    processor = SimpleTextProcessor(max_length=10)
+    processor = WordProcessor(max_length=10, min_freq=1)
 
-    # Test tokenization
-    text = "Hello world! This is a test."
-    tokens = processor._tokenize(text)
-    assert tokens == ["hello", "world", "this", "is", "a", "test"]
-
-    # Test vocabulary building
     texts = ["hello world", "test text", "hello test"]
-    processor.build_vocab(texts, min_freq=1)
+    processor.build_vocab(texts)
     assert len(processor.vocab) > 2  # Should have more than just <PAD> and <UNK>
 
-    # Test encoding
     encoded = processor.encode("hello world")
-    assert len(encoded) == 10  # Should be padded to max_length
-    assert all(isinstance(x, int) for x in encoded)
+    assert len(encoded["input_ids"]) == 10  # Padded to max_length
+    assert encoded["input_ids"].dtype == torch.long
 
 
 def test_parquet_store():
@@ -44,8 +38,9 @@ def test_parquet_store():
     prompt_id1 = store.add_prompt("Test prompt 1", is_injection=False)
     prompt_id2 = store.add_prompt("Test prompt 2", is_injection=True)
 
-    assert prompt_id1 == 1
-    assert prompt_id2 == 2
+    assert prompt_id1 is not None
+    assert prompt_id2 is not None
+    assert prompt_id1 != prompt_id2
 
     # Test getting all prompts
     prompts = store.get_all_prompts()
@@ -89,23 +84,20 @@ def test_parquet_store():
     assert any("Another test prompt" in r["text"] for r in results)
 
     # Clean up
-    import os
 
     if os.path.exists(test_parquet_path):
         os.remove(test_parquet_path)
 
 
 def test_detector_predict():
-    """Test detector predictions."""
-    # This test requires a trained model
-    from promptscan import get_model_path
+    """Test detector predictions using UnifiedDetector with CNN model."""
+    from promptscan import UnifiedDetector, get_model_path
 
-    model_path = get_model_path("best_model")
+    safetensors_path = get_model_path("cnn_best").with_suffix(".safetensors")
+    if not safetensors_path.exists():
+        pytest.skip("CNN model file not found, skipping prediction tests")
 
-    if not os.path.exists(model_path):
-        pytest.skip("Model file not found, skipping prediction tests")
-
-    detector = SimplePromptDetector(model_path=str(model_path))
+    detector = UnifiedDetector(model_type="cnn")
 
     # Test with safe prompt
     result = detector.predict("What is the capital of France?")

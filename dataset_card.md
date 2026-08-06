@@ -15,7 +15,7 @@ multilinguality:
 source_datasets:
 - original
 - extended
-pretty_name: Prompt Detective Dataset
+pretty_name: PromptScan Dataset
 dataset_info:
   features:
   - name: text
@@ -53,7 +53,7 @@ tags:
 - content-moderation
 ---
 
-# Prompt Detective Dataset
+# PromptScan Dataset
 
 ## Dataset Description
 
@@ -132,7 +132,7 @@ Examples were labeled through multiple methods:
 3. **Automated filtering**: Pattern-based identification of injection attempts
 
 #### Who are the annotators?
-- Prompt Detective project team (original dataset)
+- PromptScan project team (original dataset)
 - deepset team (`deepset/prompt-injections` dataset)
 - contrasto.ai team (`AnaBelenBarbero/detect-prompt-injection` project)
 
@@ -168,7 +168,7 @@ The dataset has the following characteristics:
 
 ### Dataset Curators
 
-- Prompt Detective project team (primary curation)
+- PromptScan project team (primary curation)
 - Contributors from aggregated datasets
 
 ### Licensing Information
@@ -178,16 +178,16 @@ The dataset has the following characteristics:
 **Note on aggregated data**: This dataset includes examples from:
 - `deepset/prompt-injections` (Apache 2.0 License)
 - `AnaBelenBarbero/detect-prompt-injection` (no explicit license, used with attribution)
-- Original Prompt Detective dataset (MIT License)
+- Original PromptScan dataset (MIT License)
 
 All aggregated data is used in accordance with source licenses and with proper attribution.
 
 ### Citation Information
 
 ```bibtex
-@dataset{prompt_detective_dataset_2024,
-  title = {Prompt Detective Dataset (Extended)},
-  author = {Prompt Detective Contributors and Dataset Aggregators},
+@dataset{promptscan_dataset_2024,
+  title = {PromptScan Dataset (Extended)},
+  author = {PromptScan Contributors and Dataset Aggregators},
   year = {2024},
   url = {https://github.com/0xdewy/promptscan},
   note = {Aggregated dataset including examples from deepset/prompt-injections and AnaBelenBarbero/detect-prompt-injection}

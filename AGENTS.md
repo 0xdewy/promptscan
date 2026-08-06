@@ -65,16 +65,25 @@ def predict(self, text: str, processor) -> Dict[str, Any]:
 promptscan/
 ├── __init__.py           # Package init, version, get_model_path()
 ├── unified_detector.py   # Main interface (UnifiedDetector)
+├── cli.py               # Command-line interface
+├── config.py             # Training configuration
+├── detector.py           # Directory analysis utilities
+├── feedback_store.py     # Feedback storage
+├── parquet_store.py      # Parquet data store
+├── batch_importer.py     # Batch prompt importer
+├── hf_utils.py           # Hugging Face Hub integration
 ├── models/               # Model implementations
 │   ├── base_model.py     # Abstract BaseModel class
 │   ├── cnn_model.py      # SimpleCNN
-│   ├── lstm_model.py     # LSTMModel  
-│   └── transformer_model.py
+│   ├── lstm_model.py     # LSTMModel
+│   ├── transformer_model.py
+│   ├── pretrained_model.py
+│   └── deberta_model.py  # DeBERTa (training only)
 ├── ensemble/             # Ensemble voting system
-├── cli.py               # Command-line interface (58657 lines)
-├── hf_utils.py          # Hugging Face Hub integration
-├── convert_model.py     # .pt to .safetensors conversion
-└── utils/               # Device, text processing, memory monitoring
+├── processors/           # Text processors
+├── training/             # Training pipeline
+│   └── strategies/       # Per-model training strategies
+└── utils/                # Device, colors, text processing, markdown parser
 ```
 
 ### Model System
@@ -93,9 +102,10 @@ promptscan/
 
 **Loading Logic** (`promptscan/__init__.py:get_model_path()`):
 1. Check local path
-2. Check package `models/checkpoints/` directory
-3. Fallback to Hugging Face Hub download
-4. Raise `FileNotFoundError` if all fail
+2. Check `models/` directory
+3. Check package `models/checkpoints/` directory
+4. Fallback to Hugging Face Hub download
+5. Raise `FileNotFoundError` if all fail
 
 ### Hugging Face Integration
 
@@ -117,16 +127,13 @@ promptscan/
 
 **Utilities** (`promptscan/hf_utils.py`):
 - `download_model_from_hf()`: Download model from HF Hub
-- `upload_model_to_hf()`: Upload model to HF Hub
-- `check_model_on_hf()`: Check if model exists on HF Hub
 
 ## CLI Structure
 
 **Main Commands** (`promptscan.cli:main()`):
 - `predict`: Detect prompt injections
-- `train`: Train models
-- `hf`: Hugging Face operations
-- `convert-model`: Convert `.pt` to `.safetensors`
+- `scan-dir`: Scan directory for prompt injections
+- `version`: Display version
 
 **Command Patterns**:
 ```python
@@ -141,11 +148,6 @@ def predict_command(args):
     result = detector.predict(args.text)
     _display_prediction(result, args.model_type, detector)
 ```
-
-**HF Subcommands**:
-- `hf download`: Download models from HF Hub
-- `hf upload`: Upload models to HF Hub  
-- `hf list`: List available models on HF Hub
 
 ## Testing
 
@@ -207,12 +209,12 @@ twine upload dist/*
 4. Publish to PyPI
 
 ### Hugging Face Publishing
-```bash
-# Upload all models
-python upload_to_hf.py
+```python
+# Upload models using the Hugging Face API
+from huggingface_hub import HfApi
 
-# Or use CLI
-promptscan hf upload --model-dir ./models/
+api = HfApi(token=os.environ["HF_TOKEN"])
+# Upload model files to the appropriate directory in the repo
 ```
 
 **Requirements**:
@@ -280,18 +282,13 @@ if args.command == "new-command":
     new_command(args)
 ```
 
-### 4. Convert .pt to Safetensors
+### 4. Retrain a Model
 ```bash
-# Convert single model
-promptscan convert-model models/cnn_best.pt models/cnn_best
+# Train a single model
+uv run python scripts/train.py --model-type cnn --epochs 20
 
-# Convert all models
-for model in cnn lstm transformer; do
-    promptscan convert-model models/${model}_best.pt models/${model}_best
-done
-
-# Verify conversion
-ls -la models/*.safetensors models/*.config.json
+# Train all models
+./train_all.sh
 ```
 
 ## Important Notes
@@ -339,9 +336,6 @@ echo $HF_TOKEN
 
 # Test HF CLI
 huggingface-cli whoami
-
-# Upload manually
-python upload_to_hf.py --verbose
 ```
 
 ### Model Loading Issues
@@ -362,8 +356,8 @@ cat models/cnn_best.config.json | jq .
 # Development
 uv pip install -e ".[dev]"
 uv run pytest
-uv run black promptscan/
 uv run ruff check --fix promptscan/
+uv run ruff format promptscan/
 
 # Building
 uv build
@@ -371,7 +365,6 @@ twine check dist/*
 
 # Publishing
 uv publish dist/promptscan-*.whl
-python upload_to_hf.py
 
 # Testing in clean environment
 python -m venv test-env

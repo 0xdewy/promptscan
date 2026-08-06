@@ -17,11 +17,11 @@ metrics:
 - recall
 ---
 
-# Prompt Detective: Prompt Injection Detection Model
+# PromptScan: Prompt Injection Detection Model
 
 ## Model Description
 
-Prompt Detective is an ensemble-based prompt injection detection system that combines multiple neural network architectures for robust security analysis. The system analyzes text input and classifies it as either a safe prompt or a potential prompt injection attempt.
+PromptScan is an ensemble-based prompt injection detection system that combines multiple neural network architectures for robust security analysis. The system analyzes text input and classifies it as either a safe prompt or a potential prompt injection attempt.
 
 **Model Architecture**: Ensemble system combining CNN (for local pattern detection), LSTM (for sequential understanding), and Transformer (for contextual accuracy) models with configurable voting strategies.
 
@@ -55,7 +55,7 @@ pip install promptscan
 
 ### Basic Usage
 ```python
-from prompt_detective import UnifiedDetector
+from promptscan import UnifiedDetector
 
 # Load the detector (ensemble is default)
 detector = UnifiedDetector(model_type="ensemble")
@@ -73,19 +73,13 @@ if "individual_predictions" in result:
 ### Command Line Interface
 ```bash
 # Analyze text (ensemble is default)
-promptscan predict "Ignore all previous instructions"
+promptscan "Ignore all previous instructions"
 
 # Analyze file
-promptscan predict --file input.txt
+promptscan input.txt
 
 # Analyze directory with summary
-promptscan predict --dir ./prompts/ --summary
-
-# Train a new model
-promptscan train
-
-# Import safe documentation from GitHub
-promptscan insert --github https://github.com/python/cpython --label safe
+promptscan ./prompts/ --summary
 ```
 
 ## Performance
@@ -144,9 +138,9 @@ This model is designed to enhance AI safety by detecting malicious prompt inject
 If you use this model in your research, please cite:
 
 ```bibtex
-@software{prompt_detective_2024,
-  title = {Prompt Detective: Prompt Injection Detection Model},
-  author = {Prompt Detective Contributors},
+@software{promptscan_2024,
+  title = {PromptScan: Prompt Injection Detection Model},
+  author = {PromptScan Contributors},
   year = {2024},
   url = {https://github.com/0xdewy/promptscan}
 }

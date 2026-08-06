@@ -3,12 +3,13 @@
 Unified data loading for training.
 """
 
+import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 
 def load_data_from_parquet(
@@ -51,38 +52,50 @@ def load_data_from_parquet(
 
 
 class TextDataset(Dataset):
-    """Generic dataset for text classification."""
+    """Generic dataset for text classification with optional augmentation."""
 
-    def __init__(self, data: List[Dict], processor):
+    def __init__(self, data: List[Dict], processor, augment: bool = False,
+                 dropout_prob: float = 0.05):
         """
         Initialize dataset.
 
         Args:
             data: List of dictionaries with "text" and "label" keys
             processor: Text processor with encode() method
+            augment: Whether to apply data augmentation
+            dropout_prob: Probability of randomly dropping words (for augmentation)
         """
         self.data = data
         self.processor = processor
+        self.augment = augment
+        self.dropout_prob = dropout_prob
 
     def __len__(self):
         return len(self.data)
 
+    def _augment_text(self, text: str) -> str:
+        """Randomly drop words to prevent memorization."""
+        words = text.split()
+        if len(words) <= 3:
+            return text
+        kept = [w for w in words if random.random() > self.dropout_prob]
+        if len(kept) < 2:
+            kept = words[:max(2, len(words) // 2)]
+        return " ".join(kept)
+
     def __getitem__(self, idx):
         item = self.data[idx]
-        encoding = self.processor.encode(item["text"])
+        text = self._augment_text(item["text"]) if self.augment else item["text"]
+        encoding = self.processor.encode(text)
 
-        # Convert to tensors, squeezing batch dimension if present
         result = {}
         for key in encoding:
             tensor = encoding[key]
-            # Remove batch dimension for individual samples
             if tensor.dim() > 1 and tensor.size(0) == 1:
                 tensor = tensor.squeeze(0)
             result[key] = tensor
 
-        # Add label
         result["label"] = torch.tensor(item["label"], dtype=torch.long)
-
         return result
 
 
@@ -92,7 +105,9 @@ def create_dataloaders(
     processor,
     batch_size: int = 32,
     collate_fn=None,
-    num_workers: int = 0,
+    num_workers: int = 2,
+    weighted_sampling: bool = True,
+    augment: bool = True,
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Create DataLoaders for training and validation.
@@ -104,19 +119,27 @@ def create_dataloaders(
         batch_size: Batch size
         collate_fn: Collate function for batching
         num_workers: Number of worker processes
+        weighted_sampling: Oversample minority class (injections)
+        augment: Apply word-dropout augmentation to training data
 
     Returns:
         Tuple of (train_loader, val_loader)
     """
-    # Create datasets
-    train_dataset = TextDataset(train_data, processor)
-    val_dataset = TextDataset(val_data, processor)
+    train_dataset = TextDataset(train_data, processor, augment=augment)
+    val_dataset = TextDataset(val_data, processor, augment=False)
 
-    # Create DataLoaders
+    train_sampler = None
+    if weighted_sampling:
+        labels = [item["label"] for item in train_data]
+        class_counts = {0: labels.count(0), 1: labels.count(1)}
+        weights = [1.0 / class_counts[label] for label in labels]
+        train_sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True,
+        sampler=train_sampler,
+        shuffle=(train_sampler is None),
         collate_fn=collate_fn,
         num_workers=num_workers,
         pin_memory=True,

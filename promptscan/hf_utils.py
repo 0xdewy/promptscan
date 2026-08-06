@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from huggingface_hub import HfApi, hf_hub_download
-    from huggingface_hub.utils import HfHubHTTPError
+    from huggingface_hub import hf_hub_download
 
     HF_AVAILABLE = True
 except ImportError:
@@ -67,168 +66,55 @@ def download_model_from_hf(
         model_path_in_repo = safetensors_filename
         config_path_in_repo = config_filename
 
-    try:
-        # Download safetensors file
-        safetensors_path = hf_hub_download(
-            repo_id=repo_id,
-            filename=model_path_in_repo,
-            cache_dir=str(cache_path),
-            token=token,
-            force_download=force_download,
-        )
+    import logging as _logging
+    import time as _time
 
-        # Download config file
-        config_path = hf_hub_download(
-            repo_id=repo_id,
-            filename=config_path_in_repo,
-            cache_dir=str(cache_path),
-            token=token,
-            force_download=force_download,
-        )
+    _logger = _logging.getLogger(__name__)
 
-        cache_safetensors = cache_path / f"{model_name}.safetensors"
-        cache_config = cache_path / f"{model_name}.config.json"
-
-        shutil.copy2(safetensors_path, cache_safetensors)
-        shutil.copy2(config_path, cache_config)
-
-        return cache_path / model_name
-
-    except Exception as e:
-        print(f"Error downloading model from Hugging Face Hub: {e}")
-        return None
-
-
-def download_all_models_from_hf(
-    repo_id: str = "0xdewy/promptscan",
-    output_dir: str = "models",
-    token: Optional[str] = None,
-    force_download: bool = False,
-) -> bool:
-    """
-    Download all promptscan models from Hugging Face Hub.
-
-    Args:
-        repo_id: Hugging Face repository ID
-        output_dir: Directory to save downloaded models
-        token: Hugging Face token (for private repos)
-        force_download: Force re-download even if cached
-
-    Returns:
-        True if all models downloaded successfully, False otherwise
-    """
-    if not HF_AVAILABLE:
-        raise ImportError(
-            "huggingface-hub is required to download models from Hugging Face Hub. "
-            "Install with: pip install huggingface-hub"
-        )
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    model_types = ["cnn", "lstm", "transformer"]
-    success_count = 0
-
-    for model_type in model_types:
-        print(f"Downloading {model_type.upper()} model...")
-
+    for attempt in range(3):
         try:
-            # Download from model directory
-            result = download_model_from_hf(
+            # Download safetensors file
+            safetensors_path = hf_hub_download(
                 repo_id=repo_id,
-                model_dir=model_type,
-                model_name=f"{model_type}_best",
+                filename=model_path_in_repo,
+                cache_dir=str(cache_path),
                 token=token,
-                cache_dir=output_dir,
                 force_download=force_download,
+                timeout=60,
             )
 
-            if result:
-                print(f"  ✓ {model_type.upper()} model downloaded")
-                success_count += 1
-            else:
-                print(f"  ✗ Failed to download {model_type} model")
+            # Download config file
+            config_path = hf_hub_download(
+                repo_id=repo_id,
+                filename=config_path_in_repo,
+                cache_dir=str(cache_path),
+                token=token,
+                force_download=force_download,
+                timeout=60,
+            )
+
+            cache_safetensors = cache_path / f"{model_name}.safetensors"
+            cache_config = cache_path / f"{model_name}.config.json"
+
+            shutil.copy2(safetensors_path, cache_safetensors)
+            shutil.copy2(config_path, cache_config)
+
+            return cache_path / model_name
 
         except Exception as e:
-            print(f"  ✗ Error downloading {model_type} model: {e}")
-
-    print(f"\nDownloaded {success_count}/{len(model_types)} models to {output_path}")
-    return success_count == len(model_types)
-
-
-def check_hf_model_available(
-    repo_id: str = "0xdewy/promptscan",
-    model_dir: str = "",
-    token: Optional[str] = None,
-) -> bool:
-    """
-    Check if a model is available on Hugging Face Hub.
-
-    Args:
-        repo_id: Hugging Face repository ID
-        model_dir: Directory within the repository
-        token: Hugging Face token (for private repos)
-
-    Returns:
-        True if model is available, False otherwise
-    """
-    if not HF_AVAILABLE:
-        return False
-
-    try:
-        api = HfApi(token=token)
-
-        if model_dir:
-            # Check for model.safetensors in directory
-            try:
-                api.hf_hub_download(
-                    repo_id=repo_id,
-                    filename=f"{model_dir}/model.safetensors",
-                    token=token,
+            if attempt < 2:
+                _logger.warning(
+                    "Error downloading model from Hugging Face Hub "
+                    "(attempt %d/3): %s", attempt + 1, e
                 )
-                return True
-            except HfHubHTTPError:
-                return False
-        else:
-            # Check if repo exists
-            try:
-                api.repo_info(repo_id=repo_id, repo_type="model")
-                return True
-            except HfHubHTTPError:
-                return False
+                _time.sleep(2 ** attempt)
+            else:
+                _logger.error(
+                    "Failed to download model from Hugging Face Hub "
+                    "after 3 attempts: %s", e
+                )
 
-    except Exception:
-        return False
+    return None
 
 
-def get_hf_model_info(
-    repo_id: str = "0xdewy/promptscan",
-    token: Optional[str] = None,
-) -> Optional[dict]:
-    """
-    Get information about a Hugging Face model repository.
 
-    Args:
-        repo_id: Hugging Face repository ID
-        token: Hugging Face token (for private repos)
-
-    Returns:
-        Dictionary with repository information or None if failed
-    """
-    if not HF_AVAILABLE:
-        return None
-
-    try:
-        api = HfApi(token=token)
-        repo_info = api.repo_info(repo_id=repo_id, repo_type="model")
-
-        return {
-            "id": repo_info.id,
-            "last_modified": repo_info.last_modified,
-            "tags": repo_info.tags,
-            "private": repo_info.private,
-            "downloads": repo_info.downloads,
-            "likes": repo_info.likes,
-        }
-    except Exception:
-        return None

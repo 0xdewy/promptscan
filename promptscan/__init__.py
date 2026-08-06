@@ -1,4 +1,4 @@
-"""Prompt Detective - AI-powered prompt injection detection system."""
+"""PromptScan - AI-powered prompt injection detection system."""
 
 import os
 from pathlib import Path
@@ -8,14 +8,12 @@ __version__ = VERSION = "0.1.3"
 
 def _is_source_install() -> bool:
     """Check if running from source tree (development) vs installed package."""
-    current = Path.cwd()
-    for i in range(4):
-        check_dir = current
-        for _ in range(i):
-            check_dir = check_dir.parent
-        if (check_dir / "pyproject.toml").exists() and (check_dir / ".git").exists():
-            return True
-    return False
+    import sys
+
+    package_parent = Path(__file__).resolve().parent.parent
+    return (package_parent / "pyproject.toml").exists() and not any(
+        "site-packages" in p for p in sys.path
+    )
 
 
 def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
@@ -178,11 +176,10 @@ def get_model_path(model_name: str, hf_fallback: bool = True) -> Path:
         + "\n".join(searched_paths)
         + "\n\n"
         "To fix:\n"
-        "  1. Train a model: promptscan train --model-type cnn|lstm|transformer\n"
+        "  1. Train a model: ./train_all.sh or python scripts/train.py\n"
         "  2. Specify custom path with --model\n"
         "  3. Check if model files exist in expected locations\n"
-        "  4. Set PROMPTSCAN_MODEL_DIR environment variable\n"
-        "  5. Download from Hugging Face Hub: promptscan download-models"
+        "  4. Set PROMPTSCAN_MODEL_DIR environment variable"
     )
 
 
@@ -218,7 +215,6 @@ def get_default_model_paths() -> dict:
         "cnn": get_model_path("cnn_best"),
         "lstm": get_model_path("lstm_best"),
         "transformer": get_model_path("transformer_best"),
-        "best": get_model_path("best_model"),
     }
 
 

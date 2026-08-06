@@ -130,8 +130,8 @@ def train_command(args):
     )
 
     if args.model_type == "transformer":
-        model_config.learning_rate = 2e-5
-        model_config.max_length = 128
+        model_config.use_amp = True
+        model_config.grad_accumulation_steps = getattr(args, "grad_accumulation", 1)
     elif args.model_type == "deberta":
         model_config.learning_rate = 2e-5
         model_config.max_length = 512
@@ -140,9 +140,12 @@ def train_command(args):
         model_config.hidden_dim = 128
         model_config.num_layers = 2
         model_config.dropout = 0.3
+        model_config.embedding_dim = 128
+        model_config.use_amp = args.amp if hasattr(args, "amp") else False
     elif args.model_type == "cnn":
-        model_config.embedding_dim = 64
+        model_config.embedding_dim = 128
         model_config.num_filters = 50
+        model_config.use_amp = args.amp if hasattr(args, "amp") else False
 
     resume = not args.new
     model, processor, results = train_model_from_data(
@@ -230,6 +233,12 @@ def main():
     )
     parser.add_argument(
         "--amp", action="store_true", help="Enable automatic mixed precision (AMP)"
+    )
+    parser.add_argument(
+        "--grad-accumulation",
+        type=int,
+        default=1,
+        help="Gradient accumulation steps (default: 1 = disabled)",
     )
     parser.add_argument(
         "--max-samples",

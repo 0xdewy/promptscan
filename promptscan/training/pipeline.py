@@ -8,218 +8,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from torch.utils.data import DataLoader
 
-from ..config import AppConfig, DataConfig, ModelConfig
-from ..parquet_store import ParquetDataStore
+from ..config import ModelConfig
 from .base_trainer import TrainingStrategy
 from .data_loader import (
     TextDataset,
     create_dataloaders,
     print_data_stats,
 )
-
-
-def train_model(
-    model_type: str,
-    data_config: DataConfig,
-    model_config: Optional[ModelConfig] = None,
-    output_dir: Optional[Path] = None,
-    resume: bool = False,
-) -> Tuple[Any, Any, Dict[str, Any]]:
-    """
-    Unified training function for all model types.
-
-    Args:
-        model_type: Type of model to train ("cnn", "lstm", "transformer")
-        data_config: Data configuration
-        model_config: Model configuration (uses defaults if None)
-        output_dir: Directory to save model (default: models/)
-
-    Returns:
-        Tuple of (model, processor, training_results)
-    """
-    # Create model configuration if not provided
-    if model_config is None:
-        model_config = ModelConfig(model_type=model_type)
-    else:
-        model_config.model_type = model_type
-
-    # Validate configurations
-    data_errors = data_config.validate()
-    if data_errors:
-        raise ValueError(f"Data configuration errors: {data_errors}")
-
-    model_errors = model_config.validate()
-    if model_errors:
-        raise ValueError(f"Model configuration errors: {model_errors}")
-
-    # Set output directory
-    if output_dir is None:
-        output_dir = data_config.model_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Load training strategy
-    strategy = get_training_strategy(model_type)
-
-    # Load data from merged.parquet with dynamic splits
-    print(f"Loading data from: {data_config.prompts_path}")
-
-    # Initialize data store
-    store = ParquetDataStore(data_config.prompts_path)
-
-    # Get all prompts to check data size
-    all_prompts = store.get_all_prompts()
-    print(f"Total prompts in database: {len(all_prompts)}")
-
-    # Get statistics
-    stats = store.get_statistics()
-    print(
-        f"   Injections: {stats['injections']} ({stats['injection_percentage']:.1f}%)"
-    )
-    print(f"   Safe: {stats['safe']} ({stats['safe_percentage']:.1f}%)")
-
-    # Check if we have enough data
-    if len(all_prompts) < 100:
-        print(f"\nWarning: Only {len(all_prompts)} prompts available.")
-        print("   Consider adding more data before training.")
-
-    # Create training splits
-    train_ratio = 1.0 - data_config.test_size - data_config.val_size
-    print(
-        f"\nCreating training splits ({train_ratio * 100:.0f}% train, {data_config.val_size * 100:.0f}% validation, {data_config.test_size * 100:.0f}% test)..."
-    )
-    splits = store.get_training_splits(
-        train_ratio=train_ratio,
-        val_ratio=data_config.val_size,
-    )
-
-    # Convert to list of dictionaries for training pipeline
-    # Training pipeline expects "label" field (1 for injection, 0 for safe)
-    # Parquet store has "is_injection" field (True/False)
-    import pandas as pd
-
-    def convert_to_training_format(df):
-        """Convert DataFrame with 'is_injection' to list of dicts with 'label'."""
-        texts = df["text"].tolist()
-        labels = df["is_injection"].astype(int).tolist()
-        optional_fields = ["source", "category", "variation_type"]
-        optional_data = {
-            field: df[field].tolist() if field in df.columns else None
-            for field in optional_fields
-        }
-        records = []
-        for i in range(len(texts)):
-            record = {"text": texts[i], "label": labels[i]}
-            for field in optional_fields:
-                data = optional_data[field]
-                if data is not None and pd.notna(data[i]):
-                    record[field] = data[i]
-            records.append(record)
-        return records
-
-    train_data = convert_to_training_format(splits["train"])
-    val_data = convert_to_training_format(splits["val"])
-    test_data = convert_to_training_format(splits["test"])
-
-    # Print split statistics (more detailed than print_data_stats)
-    print("\nSplit Statistics:")
-    print(f"  Training: {len(train_data)} samples")
-    print(f"  Validation: {len(val_data)} samples")
-    print(f"  Test: {len(test_data)} samples")
-    print(f"  Total: {len(train_data) + len(val_data) + len(test_data)} samples")
-
-    # Create processor
-    print(f"\nCreating {model_type} processor...")
-    processor = strategy.create_processor(model_config)
-
-    # Build vocabulary if needed
-    if hasattr(processor, "build_vocab"):
-        train_texts = [item["text"] for item in train_data]
-        processor.build_vocab(train_texts)
-        print(f"Vocabulary size: {_get_vocab_size(processor)}")
-
-    # Create model
-    print(f"\nCreating {model_type} model...")
-    model = strategy.create_model(model_config)
-
-    # Create datasets and dataloaders
-    print("\nCreating dataloaders...")
-    collate_fn = strategy.get_collate_fn()
-    train_loader, val_loader = create_dataloaders(
-        train_data,
-        val_data,
-        processor,
-        batch_size=model_config.batch_size,
-        collate_fn=collate_fn,
-    )
-
-    # Create test loader if test data is available
-    test_loader = _create_test_loader(
-        test_data, processor, model_config.batch_size, collate_fn
-    )
-
-    # Create trainer - pass resume flag for proper embedding resize on resume
-    print("\nCreating trainer...")
-    trainer = strategy.create_trainer(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        config=model_config,
-        processor=processor,
-        resume=resume,
-    )
-
-    # Validate training data before starting
-    print("\nValidating training data...")
-    if hasattr(processor, "validate_training_data"):
-        train_texts = [item["text"] for item in train_data]
-        val_texts = [item["text"] for item in val_data]
-        validation = processor.validate_training_data(train_texts + val_texts)
-        if not validation["valid"]:
-            raise RuntimeError(
-                f"Training data contains out-of-range tokens! "
-                f"Max token ID: {validation['max_id_found']}, "
-                f"Embedding size: {validation['embedding_size']}, "
-                f"Out of range count: {validation['out_of_range_count']}"
-            )
-        print(f"  Data validation passed (max token ID: {validation['max_id_found']}, embedding: {validation['embedding_size']})")
-    else:
-        max_token_id = _get_max_token_id(processor)
-        embedding_size = getattr(processor, 'next_id', max_token_id + 1)
-        if max_token_id >= embedding_size:
-            raise RuntimeError(
-                f"Processor configuration error: max_token_id ({max_token_id}) >= embedding_size ({embedding_size})"
-            )
-
-    # Train model
-    print("\nStarting training...")
-    results = trainer.train()
-
-    # Evaluate on test set
-    results = _evaluate_test_set(trainer, test_loader, results)
-
-    # Save model
-    model_filename = f"{model_type}_best"
-    model_path = output_dir / model_filename
-
-    train_acc = 0.0
-    if "history" in results and len(results["history"]) > 0:
-        train_acc = results["history"][-1].get("train_accuracy", 0.0)
-
-    trainer.save_model(
-        model_path,
-        train_acc=train_acc,
-        val_acc=results["final_metrics"].get("val_accuracy", 0),
-        test_acc=results.get("test_metrics", {}).get("accuracy", 0),
-        epochs_trained=results["epochs_trained"],
-    )
-
-    print("\nTraining completed!")
-    print(f"Best validation accuracy: {results['best_val_accuracy']:.2%}")
-    if "test_metrics" in results:
-        print(f"Test accuracy: {results['test_metrics']['accuracy']:.2%}")
-    print(f"Model saved to: {model_path}")
-
-    return model, processor, results
 
 
 def train_model_from_data(
@@ -415,8 +210,10 @@ def train_model_from_data(
         model_path,
         train_acc=train_acc,
         val_acc=results["final_metrics"].get("val_accuracy", 0),
+        val_f1=results.get("best_val_f1", results["final_metrics"].get("val_f1", 0)),
         test_acc=results.get("test_metrics", {}).get("accuracy", 0),
         epochs_trained=results["epochs_trained"],
+        best_threshold=results.get("test_metrics", {}).get("best_threshold", 0.5),
     )
 
     print("\nTraining completed!")
@@ -468,28 +265,6 @@ def _evaluate_test_set(trainer, test_loader, results):
     return results
 
 
-def create_default_config(model_type: str = "cnn") -> AppConfig:
-    """
-    Create default configuration for training.
-
-    Args:
-        model_type: Type of model ("cnn", "lstm", "transformer")
-
-    Returns:
-        AppConfig instance with default settings
-    """
-    # Create model config with specified type
-    model_config = ModelConfig(model_type=model_type)
-
-    # Create data config with default paths
-    data_config = DataConfig()
-
-    # Create app config combining both
-    app_config = AppConfig(model=model_config, data=data_config)
-
-    return app_config
-
-
 def get_training_strategy(model_type: str) -> TrainingStrategy:
     """
     Get training strategy for model type.
@@ -518,34 +293,3 @@ def get_training_strategy(model_type: str) -> TrainingStrategy:
         return DeBERTaTrainingStrategy()
     else:
         raise ValueError(f"Unknown model type: {model_type}")
-
-
-if __name__ == "__main__":
-    # Test the training pipeline
-    try:
-        # Create test configuration
-        data_config = DataConfig()
-        model_config = ModelConfig(model_type="cnn", epochs=1, batch_size=4)
-
-        print("Testing training pipeline...")
-        model, processor, results = train_model(
-            model_type="cnn",
-            data_config=data_config,
-            model_config=model_config,
-            output_dir=Path("test_models"),
-        )
-
-        print("\n✓ Training pipeline test passed!")
-        print(f"Best validation accuracy: {results['best_val_accuracy']:.2%}")
-
-        # Clean up test directory
-        import shutil
-
-        if Path("test_models").exists():
-            shutil.rmtree("test_models")
-
-    except Exception as e:
-        print(f"\n✗ Training pipeline test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
