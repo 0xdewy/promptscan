@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Markdown parsing utilities for Safe Prompts.
+Markdown parsing utilities for PromptScan.
 Provides functions to extract plain text from markdown files for prompt injection analysis.
 """
 

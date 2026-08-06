@@ -1,73 +1,92 @@
 #!/usr/bin/env python3
 """
 Voting strategies for ensemble predictions.
+
+Voting strategies now use native class_probabilities from model predictions
+instead of reconstructing pseudo-probabilities from hard predictions.
 """
 
 from collections import Counter, defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+
+AGREEMENT_GATE = 0.6
 
 
 class VotingStrategies:
     """Collection of voting strategies for ensemble predictions."""
 
     @staticmethod
+    def _get_class_probs(pred: Dict[str, Any]) -> Dict[str, float]:
+        """Get class probabilities from a prediction result."""
+        if "class_probabilities" in pred:
+            return pred["class_probabilities"]
+        confidence = pred.get("confidence", 0.5)
+        if pred.get("prediction") == "INJECTION":
+            return {"SAFE": 1.0 - confidence, "INJECTION": confidence}
+        return {"SAFE": confidence, "INJECTION": 1.0 - confidence}
+
+    @staticmethod
     def majority_vote(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Majority voting - each model gets one vote."""
         votes = Counter([p["prediction"] for p in predictions])
         winner, winner_count = votes.most_common(1)[0]
-
-        # Average confidence for winning class
-        winner_confs = [
-            p["confidence"] for p in predictions if p["prediction"] == winner
-        ]
-        avg_confidence = sum(winner_confs) / len(winner_confs)
-
-        # Calculate agreement ratio
         agreement = winner_count / len(predictions)
 
+        avg_probs = defaultdict(float)
+        for p in predictions:
+            probs = VotingStrategies._get_class_probs(p)
+            for cls_name, prob in probs.items():
+                avg_probs[cls_name] += prob
+        for cls_name in avg_probs:
+            avg_probs[cls_name] /= len(predictions)
+
+        veredict = winner if agreement >= AGREEMENT_GATE else "uncertain"
+        confidence = avg_probs[winner] if agreement >= AGREEMENT_GATE else min(avg_probs[winner], 0.5)
+
         return {
-            "prediction": winner,
-            "confidence": avg_confidence,
+            "prediction": veredict,
+            "confidence": confidence,
             "agreement": agreement,
             "votes": dict(votes),
+            "probabilities": dict(avg_probs),
             "strategy": "majority",
         }
 
     @staticmethod
     def weighted_vote(
-        predictions: List[Dict[str, Any]], weights: List[float] = None
+        predictions: List[Dict[str, Any]], weights: Optional[List[float]] = None
     ) -> Dict[str, Any]:
-        """Weighted voting - models weighted by confidence or custom weights."""
+        """Weighted voting using native class probabilities."""
         if weights is None:
-            # Default: weight by model confidence
-            weights = [p["confidence"] for p in predictions]
+            weights = [p.get("confidence", 0.5) for p in predictions]
 
-        # Normalize weights
         weights = np.array(weights) / sum(weights)
 
-        # Weighted average of probabilities
         weighted_probs = defaultdict(float)
         for pred, weight in zip(predictions, weights):
-            # Convert to probability distribution
-            probs = {"SAFE": 0.0, "INJECTION": 0.0}
-            if pred["prediction"] == "SAFE":
-                probs["SAFE"] = pred["confidence"]
-                probs["INJECTION"] = 1 - pred["confidence"]
-            else:
-                probs["INJECTION"] = pred["confidence"]
-                probs["SAFE"] = 1 - pred["confidence"]
+            probs = VotingStrategies._get_class_probs(pred)
+            for cls_name, prob in probs.items():
+                weighted_probs[cls_name] += prob * weight
 
-            for class_name, prob in probs.items():
-                weighted_probs[class_name] += prob * weight
-
-        # Select winner
         winner = max(weighted_probs.items(), key=lambda x: x[1])
 
+        vote_counts = Counter([p["prediction"] for p in predictions])
+        winner_votes = vote_counts.get(winner[0], 0)
+        agreement = winner_votes / len(predictions) if predictions else 0.0
+
+        verdict = winner[0] if agreement >= AGREEMENT_GATE else "uncertain"
+        confidence = (
+            weighted_probs[winner[0]] if agreement >= AGREEMENT_GATE
+            else min(weighted_probs[winner[0]], 0.5)
+        )
+
         return {
-            "prediction": winner[0],
-            "confidence": winner[1],
+            "prediction": verdict,
+            "confidence": confidence,
+            "agreement": agreement,
             "probabilities": dict(weighted_probs),
             "strategy": "weighted",
         }
@@ -75,17 +94,22 @@ class VotingStrategies:
     @staticmethod
     def confidence_based(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Select prediction with highest confidence."""
-        best = max(predictions, key=lambda x: x["confidence"])
+        best = max(predictions, key=lambda x: x.get("confidence", 0))
 
-        # Count how many agree with the best
         agreement_count = sum(
             1 for p in predictions if p["prediction"] == best["prediction"]
         )
-        agreement = agreement_count / len(predictions)
+        agreement = agreement_count / len(predictions) if predictions else 0.0
+
+        verdict = best["prediction"] if agreement >= AGREEMENT_GATE else "uncertain"
+        confidence = (
+            best["confidence"] if agreement >= AGREEMENT_GATE
+            else min(best["confidence"], 0.5)
+        )
 
         return {
-            "prediction": best["prediction"],
-            "confidence": best["confidence"],
+            "prediction": verdict,
+            "confidence": confidence,
             "agreement": agreement,
             "source_model": best.get("model_type", "unknown"),
             "strategy": "confidence",
@@ -93,32 +117,33 @@ class VotingStrategies:
 
     @staticmethod
     def soft_vote(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Soft voting - average probability distributions."""
+        """Soft voting - average native probability distributions."""
         avg_probs = defaultdict(float)
 
         for pred in predictions:
-            # Convert to probability distribution
-            probs = {"SAFE": 0.0, "INJECTION": 0.0}
-            if pred["prediction"] == "SAFE":
-                probs["SAFE"] = pred["confidence"]
-                probs["INJECTION"] = 1 - pred["confidence"]
-            else:
-                probs["INJECTION"] = pred["confidence"]
-                probs["SAFE"] = 1 - pred["confidence"]
+            probs = VotingStrategies._get_class_probs(pred)
+            for cls_name, prob in probs.items():
+                avg_probs[cls_name] += prob
 
-            for class_name, prob in probs.items():
-                avg_probs[class_name] += prob
+        for cls_name in avg_probs:
+            avg_probs[cls_name] /= len(predictions) if predictions else 1
 
-        # Average
-        for class_name in avg_probs:
-            avg_probs[class_name] /= len(predictions)
-
-        # Select winner
         winner = max(avg_probs.items(), key=lambda x: x[1])
 
+        vote_counts = Counter([p["prediction"] for p in predictions])
+        winner_votes = vote_counts.get(winner[0], 0)
+        agreement = winner_votes / len(predictions) if predictions else 0.0
+
+        verdict = winner[0] if agreement >= AGREEMENT_GATE else "uncertain"
+        confidence = (
+            avg_probs[winner[0]] if agreement >= AGREEMENT_GATE
+            else min(avg_probs[winner[0]], 0.5)
+        )
+
         return {
-            "prediction": winner[0],
-            "confidence": winner[1],
+            "prediction": verdict,
+            "confidence": confidence,
+            "agreement": agreement,
             "probabilities": dict(avg_probs),
             "strategy": "soft",
         }

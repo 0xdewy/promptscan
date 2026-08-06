@@ -16,16 +16,6 @@ while [[ $# -gt 0 ]]; do
             FORCE=true
             shift
             ;;
-        --new)
-            echo "⚠️  WARNING: --new is deprecated. Use --force to overwrite existing models."
-            FORCE=true
-            shift
-            ;;
-        -n)
-            echo "⚠️  WARNING: -n is deprecated. Use --force to overwrite existing models."
-            FORCE=true
-            shift
-            ;;
         *)
             echo "Unknown option: $1"
             echo "Usage: train_all.sh [--force|-f]"
@@ -97,13 +87,9 @@ if [ "$DEVICE" = "cuda" ]; then
     echo ""
 fi
 
-echo "⏱️  Estimated training times (CNN 30ep / LSTM 15ep / Transformer 3ep):"
-echo "   1,000 samples  → ~12min / ~12min / ~5min  (total ~29min)"
-echo "   5,000 samples  → ~54min / ~48min / ~22min  (total ~124min)"
-echo "   10,000 samples → ~105min / ~96min / ~45min  (total ~246min)"
-echo "   50,000 samples → ~9h / ~8h / ~4h  (total ~21h)"
-echo ""
-echo "   Note: Training on subsets is perfectly fine - your original data is never modified."
+echo "⏱️  Estimated training times:"
+echo "   After dedup, ~300K → ~294K samples with per-source caps → ~90K training samples"
+echo "   CNN 30ep / LSTM 20ep / Transformer 8ep with AMP and weighted sampling"
 echo ""
 
 echo -n "How many samples to train on? [press Enter for all, or enter a number]: "
@@ -191,26 +177,26 @@ print('  Pre-trained model ready.')
 "
 
 echo ""
-echo "--- Training CNN (30 epochs) ---"
+echo "--- Training CNN (30 epochs, batch 64, AMP) ---"
 uv run python scripts/train.py \
-    --model-type cnn --epochs 30 --batch-size 32 \
-    --data-source "$DATA" --device "$DEVICE" \
+    --model-type cnn --epochs 30 --batch-size 64 \
+    --data-source "$DATA" --device "$DEVICE" --amp \
     --max-samples-per-source "$MAX_PER_SOURCE" \
     $RESUME_CNN
 
 echo ""
-echo "--- Training LSTM (15 epochs) ---"
+echo "--- Training LSTM (20 epochs, batch 32, AMP) ---"
 uv run python scripts/train.py \
-    --model-type lstm --epochs 15 --batch-size 32 \
-    --data-source "$DATA" --device "$DEVICE" \
+    --model-type lstm --epochs 20 --batch-size 32 \
+    --data-source "$DATA" --device "$DEVICE" --amp \
     --max-samples-per-source "$MAX_PER_SOURCE" \
     $RESUME_LSTM
 
 echo ""
-echo "--- Training Transformer (3 epochs, batch 8, AMP) ---"
+echo "--- Training Transformer (8 epochs, batch 16, AMP, grad-accum 2) ---"
 uv run python scripts/train.py \
-    --model-type transformer --epochs 3 --batch-size 8 \
-    --learning-rate 2e-5 \
+    --model-type transformer --epochs 8 --batch-size 16 \
+    --learning-rate 2e-5 --grad-accumulation 2 \
     --data-source "$DATA" --device "$DEVICE" --amp \
     --max-samples-per-source "$MAX_PER_SOURCE" \
     $RESUME_TRANSFORMER

@@ -3,11 +3,14 @@
 Device management utilities for PyTorch.
 """
 
+import logging
 import os
 from contextlib import contextmanager
 from typing import Optional
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 def get_device(device: Optional[str] = None) -> str:
@@ -36,15 +39,16 @@ def get_device(device: Optional[str] = None) -> str:
             torch.set_num_threads(min(4, torch.get_num_threads()))
 
     if device == "cuda" and torch.cuda.is_available():
-        print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-        print(
-            f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB"
+        logger.info("Using GPU: %s", torch.cuda.get_device_name(0))
+        logger.info(
+            "GPU Memory: %.1f GB",
+            torch.cuda.get_device_properties(0).total_memory / 1024**3,
         )
     else:
         if device == "cuda":
-            print("CUDA requested but not available, falling back to CPU")
+            logger.warning("CUDA requested but not available, falling back to CPU")
             device = "cpu"
-        print(f"Using CPU with {torch.get_num_threads()} threads")
+        logger.info("Using CPU with %d threads", torch.get_num_threads())
 
     return device
 

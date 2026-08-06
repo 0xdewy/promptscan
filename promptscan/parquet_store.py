@@ -359,6 +359,16 @@ class ParquetDataStore:
 
         df = self._data
 
+        # Deduplicate before splitting — prevents data leakage from
+        # near-duplicate texts ending up in both train and test partitions.
+        if "text" in df.columns:
+            norm_text = df["text"].str.strip().str.lower().str.replace(r"\s+", " ", regex=True)
+            before = len(df)
+            df = df.loc[norm_text.drop_duplicates().index].copy()
+            dropped = before - len(df)
+            if dropped > 0:
+                print(f"  Deduplication: {before:,} → {len(df):,} rows ({dropped:,} near-duplicates removed)")
+
         # Per-source cap: prevents any single source from dominating training
         if max_samples_per_source > 0 and "source" in df.columns:
             before = len(df)

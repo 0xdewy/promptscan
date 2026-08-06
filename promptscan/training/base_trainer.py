@@ -6,6 +6,7 @@ Base trainer class for unified training pipeline.
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import warnings
 
 import torch
 import torch.nn as nn
@@ -14,6 +15,11 @@ from torch.utils.data import DataLoader
 
 from ..config import ModelConfig
 from ..utils.device import get_device
+
+# HuggingFace cosine schedulers trigger a spurious PyTorch warning about
+# lr_scheduler.step() ordering even when optimizer.step() is called first.
+# This is a known false positive with AMP + transformers schedulers.
+warnings.filterwarnings("ignore", message=".*lr_scheduler.step.*before.*optimizer.step.*")
 
 
 class FocalLoss(nn.Module):
@@ -99,20 +105,18 @@ class BaseTrainer(ABC):
 
         # Loss function
         loss_type = getattr(config, 'loss_type', 'focal')
+        label_smoothing = getattr(config, 'label_smoothing', 0.0)
         if loss_type == 'focal':
             focal_gamma = getattr(config, 'focal_gamma', 2.0)
             self.criterion = FocalLoss(alpha=class_weights, gamma=focal_gamma)
         else:
             if class_weights is not None:
-                self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+                self.criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
             else:
-                self.criterion = nn.CrossEntropyLoss()
+                self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
         # Optimizer
         self.optimizer = self._create_optimizer()
-
-        # Learning rate scheduler (optional)
-        self.scheduler = self._create_scheduler()
 
         # Performance optimizations
         self.use_amp = getattr(config, "use_amp", False) and self.device == "cuda"
@@ -123,10 +127,16 @@ class BaseTrainer(ABC):
         else:
             self.scaler = None
 
+        # Learning rate scheduler (optional)
+        self.scheduler = self._create_scheduler()
+
         # Training state
         self.epoch = 0
         self.best_val_acc = 0.0
+        self.best_val_f1 = 0.0
+        self.best_threshold = 0.5
         self.patience_counter = 0
+        self._scheduler_ready = False
         self.history: List[Dict[str, float]] = []
 
     def _compute_class_weights(self) -> Optional[torch.Tensor]:
@@ -259,9 +269,10 @@ class BaseTrainer(ABC):
 
                 # Zero gradients
                 self.optimizer.zero_grad()
+                self._scheduler_ready = True
 
                 # Update learning rate scheduler (skip ReduceLROnPlateau - it's stepped after validation)
-                if self.scheduler is not None:
+                if self.scheduler is not None and self._scheduler_ready:
                     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
                     if not isinstance(self.scheduler, ReduceLROnPlateau):
@@ -288,8 +299,8 @@ class BaseTrainer(ABC):
             else:
                 self.optimizer.step()
 
-            # Update learning rate scheduler (skip ReduceLROnPlateau - it's stepped after validation)
-            if self.scheduler is not None:
+            # Update learning rate scheduler
+            if self.scheduler is not None and self._scheduler_ready:
                 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
                 if not isinstance(self.scheduler, ReduceLROnPlateau):
@@ -309,42 +320,64 @@ class BaseTrainer(ABC):
         Validate the model with optional mixed precision.
 
         Returns:
-            Dictionary with validation metrics
+            Dictionary with validation metrics including per-class scores.
         """
         self.model.eval()
         total_loss = 0.0
         correct = 0
         total = 0
+        all_probs = []
+        all_labels_list = []
 
         with torch.no_grad():
             for batch in self.val_loader:
-                # Prepare batch
                 inputs, labels = self._prepare_batch(batch)
 
-                # Mixed precision inference
                 if self.use_amp:
                     with torch.amp.autocast('cuda'):
                         outputs = self.model(inputs)
                         loss = self.criterion(outputs, labels)
                 else:
-                    # Standard inference
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
 
-                # Update metrics
                 total_loss += loss.item()
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
-        # Calculate metrics
-        avg_loss = total_loss / len(self.val_loader)
+                probs = torch.softmax(outputs, dim=1)[:, 1]
+                all_probs.extend(probs.cpu().tolist())
+                all_labels_list.extend(labels.cpu().tolist())
+
+        avg_loss = total_loss / len(self.val_loader) if len(self.val_loader) > 0 else 0.0
         accuracy = correct / total if total > 0 else 0.0
 
-        return {
+        metrics = {
             "val_loss": avg_loss,
             "val_accuracy": accuracy,
         }
+
+        if all_labels_list:
+            try:
+                from sklearn.metrics import f1_score, precision_score, recall_score
+                import numpy as np
+
+                preds = (np.array(all_probs) > 0.5).astype(int)
+                labels_arr = np.array(all_labels_list)
+
+                metrics["val_precision"] = precision_score(labels_arr, preds, average="binary", zero_division=0)
+                metrics["val_recall"] = recall_score(labels_arr, preds, average="binary", zero_division=0)
+                metrics["val_f1"] = f1_score(labels_arr, preds, average="binary", zero_division=0)
+
+                unique_preds = set(preds.tolist())
+                if len(unique_preds) == 1:
+                    only_class = list(unique_preds)[0]
+                    print(f"  WARNING: Model predicts only class {only_class} — possible collapse")
+            except ImportError:
+                metrics["val_f1"] = accuracy
+
+        return metrics
 
     def evaluate(self, data_loader: DataLoader) -> Dict[str, float]:
         """
@@ -482,19 +515,20 @@ class BaseTrainer(ABC):
                 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
                 if isinstance(self.scheduler, ReduceLROnPlateau):
-                    self.scheduler.step(val_metrics["val_accuracy"])
+                    self.scheduler.step(val_metrics.get("val_f1", val_metrics["val_accuracy"]))
 
             # Print progress
             self._print_epoch_progress(epoch + 1, epochs, metrics)
 
-            # Check for improvement
-            if val_metrics["val_accuracy"] > self.best_val_acc:
+            # Check for improvement using F1 as primary metric
+            current_val_f1 = val_metrics.get("val_f1", val_metrics["val_accuracy"])
+            if current_val_f1 > self.best_val_f1:
+                self.best_val_f1 = current_val_f1
                 self.best_val_acc = val_metrics["val_accuracy"]
                 self.patience_counter = 0
 
-                # Save best model
                 self._save_checkpoint(is_best=True)
-                print(f"  ✓ New best model (val acc: {self.best_val_acc:.2%})")
+                print(f"  ✓ New best model (val F1: {self.best_val_f1:.4f}, val acc: {self.best_val_acc:.2%})")
             else:
                 self.patience_counter += 1
 
@@ -511,6 +545,7 @@ class BaseTrainer(ABC):
 
         return {
             "best_val_accuracy": self.best_val_acc,
+            "best_val_f1": self.best_val_f1,
             "final_metrics": final_metrics,
             "history": self.history,
             "epochs_trained": self.epoch,
@@ -520,13 +555,19 @@ class BaseTrainer(ABC):
         self, epoch: int, total_epochs: int, metrics: Dict[str, float]
     ):
         """Print training progress for current epoch."""
-        print(f"Epoch {epoch}/{total_epochs}:")
-        print(
-            f"  Train Loss: {metrics['train_loss']:.4f}, Train Acc: {metrics['train_accuracy']:.2%}"
-        )
-        print(
-            f"  Val Loss: {metrics['val_loss']:.4f}, Val Acc: {metrics['val_accuracy']:.2%}"
-        )
+        parts = [
+            f"Epoch {epoch}/{total_epochs}:",
+            f"  Train Loss: {metrics['train_loss']:.4f}, Train Acc: {metrics['train_accuracy']:.2%}",
+            f"  Val Loss: {metrics['val_loss']:.4f}, Val Acc: {metrics['val_accuracy']:.2%}",
+        ]
+        if "val_f1" in metrics:
+            parts.append(
+                f"  Val F1: {metrics['val_f1']:.4f}, "
+                f"Precision: {metrics.get('val_precision', 0):.4f}, "
+                f"Recall: {metrics.get('val_recall', 0):.4f}"
+            )
+        for line in parts:
+            print(line)
 
     def _save_checkpoint(self, is_best: bool = False):
         """Save model checkpoint."""
@@ -574,22 +615,25 @@ class BaseTrainer(ABC):
             model_path: Path to save model
             **metadata: Additional metadata to save
         """
-        # Try to use the model's save method if it exists
+        meta = {
+            "best_val_f1": self.best_val_f1,
+            "best_val_accuracy": self.best_val_acc,
+            "best_threshold": metadata.pop("best_threshold", self.best_threshold),
+            "calibration_temperature": metadata.pop("calibration_temperature", 1.0),
+            **metadata,
+        }
         if hasattr(self.model, "save"):
-            self.model.save(str(model_path), processor=self.processor, **metadata)
+            self.model.save(str(model_path), processor=self.processor, **meta)
         else:
-            # Fallback to old method
             checkpoint = {
                 "model_state_dict": self.model.state_dict(),
                 "config": self.config,
                 "best_val_acc": self.best_val_acc,
                 "history": self.history,
-                **metadata,
+                **meta,
             }
-
             if self.processor is not None:
                 checkpoint["processor_config"] = self.processor.get_config()
-
             torch.save(checkpoint, model_path)
 
         print(f"Model saved to {model_path}")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Command-line interface for Safe Prompts.
+Command-line interface for PromptScan.
 """
 
 import os
@@ -77,7 +77,7 @@ def predict_command(args):
     """Handle predict command."""
     import time
 
-    print("🔍 Safe Prompts - Prompt Injection Detector")
+    print("PromptScan - Prompt Injection Detector")
     print("=" * 60)
     print("Loading ensemble model...")
 
@@ -117,6 +117,7 @@ def predict_command(args):
             model_type="ensemble",
             device=args.device,
             voting_strategy=args.voting_strategy,
+            confidence_threshold=args.confidence_threshold,
         )
     except FileNotFoundError as e:
         print(f"\n{Colors.error(f'❌ Error: {e}')}")
@@ -466,7 +467,7 @@ def predict_command(args):
         print("=" * 60)
 
     else:
-        print("🔍 Safe Prompts - Interactive Analysis Mode")
+        print("PromptScan - Interactive Analysis Mode")
         print("=" * 60)
         print("Enter text to analyze for prompt injection.")
         print("Press Ctrl+D (Unix) or Ctrl+Z (Windows) to exit.")
@@ -536,7 +537,7 @@ def predict_command(args):
 
 def version_command(args):
     """Handle version command."""
-    print(f"Safe Prompts v{__version__}")
+    print(f"PromptScan v{__version__}")
     print("Prompt injection detection system")
     print(f"Python {sys.version}")
 
@@ -544,7 +545,7 @@ def version_command(args):
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Safe Prompts - Prompt injection detection system",
+        description="PromptScan - Prompt injection detection system",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -586,6 +587,13 @@ Examples:
 
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show verbose output with details"
+    )
+
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.5,
+        help="Minimum confidence for INJECTION prediction (0.0-1.0, default: 0.5)",
     )
 
     args = parser.parse_args()

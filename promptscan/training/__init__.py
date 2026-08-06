@@ -10,7 +10,7 @@ from .data_loader import (
     load_data_from_parquet,
     print_data_stats,
 )
-from .pipeline import create_default_config, get_training_strategy, train_model
+from .pipeline import get_training_strategy, train_model_from_data
 
 __all__ = [
     "BaseTrainer",
@@ -20,7 +20,6 @@ __all__ = [
     "TextDataset",
     "get_data_stats",
     "print_data_stats",
-    "train_model",
+    "train_model_from_data",
     "get_training_strategy",
-    "create_default_config",
 ]

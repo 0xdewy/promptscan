@@ -320,61 +320,6 @@ class BatchImporter:
         # Import files
         return self.import_from_files(files, label, dry_run, verbose or self.verbose)
 
-    def import_from_github(
-        self,
-        github_url: str,
-        label: Optional[bool] = None,
-        extensions: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
-        max_size: Optional[int] = None,
-        max_depth: int = 10,
-        dry_run: bool = False,
-        github_token: Optional[str] = None,
-        branch: str = "main",
-    ) -> ImportStats:
-        """
-        Import prompts from GitHub repository.
-
-        Note: This is a simplified stub. For full GitHub import functionality,
-        use the original batch_importer.py or implement GitHub API integration.
-
-        Args:
-            github_url: GitHub repository URL
-            label: Label for all prompts
-            extensions: File extensions to include
-            exclude: Path patterns to exclude
-            max_size: Maximum file size in bytes
-            max_depth: Maximum directory depth
-            dry_run: Preview without importing
-            github_token: GitHub personal access token
-            branch: Git branch to use
-
-        Returns:
-            Import statistics
-        """
-        print(f"🌐 GitHub Import: {github_url}")
-        print(f"🌿 Branch: {branch}")
-        print(f"📏 Max depth: {max_depth}")
-
-        # Show helpful message about limited functionality
-        print("\n⚠️  NOTE: Simplified GitHub import has limited functionality.")
-        print("   For full GitHub import features:")
-        print("   1. Use the original batch_importer.py with GitHub API integration")
-        print("   2. Or clone the repository locally and use --dir option")
-        print("   3. Or implement proper GitHub API support")
-
-        # Create empty stats to return
-        stats = ImportStats()
-        stats.start()
-
-        print(f"\n📊 GitHub import would process repository: {github_url}")
-        print("   (Actual import not implemented in simplified version)")
-
-        stats.finish()
-        self._print_import_summary(stats, dry_run)
-
-        return stats
-
     def _print_import_summary(self, stats: ImportStats, dry_run: bool = False):
         """Print import summary statistics."""
         print("\n📊 IMPORT COMPLETE")

@@ -93,7 +93,7 @@ def import_parquet_file(args, store):
 
 def batch_insert(args, store):
     """Handle batch insert from GitHub, directory, or file list."""
-    print("🔧 Safe Prompts - Batch Insertion Mode")
+    print("PromptScan - Batch Insertion Mode")
     print("=" * 60)
 
     extensions = None
@@ -184,7 +184,7 @@ def batch_insert(args, store):
 
 def interactive_insert(args, store):
     """Handle interactive insert mode."""
-    print("💬 Safe Prompts - Interactive Insertion Mode")
+    print("PromptScan - Interactive Insertion Mode")
     print("=" * 50)
     print("Enter prompts to add to the database.")
     print("Press Ctrl+D (Unix) or Ctrl+Z (Windows) to exit.")

@@ -21,14 +21,15 @@ class ParquetFeedbackStore:
         Args:
             parquet_path: Path to the parquet file
         """
+        if parquet_path is None:
+            parquet_path = "data/unverified_user_submissions.parquet"
         self.parquet_path = Path(parquet_path)
         self._data = None
-        self._load_data()
+        self._load_metadata()
 
-    def _load_data(self) -> None:
-        """Load data from parquet file into memory."""
+    def _load_metadata(self) -> None:
+        """Load metadata from parquet file without reading all data."""
         if not self.parquet_path.exists():
-            # Create empty DataFrame with correct schema
             self._data = pd.DataFrame(
                 {
                     "id": pd.Series([], dtype="int64"),
@@ -38,24 +39,32 @@ class ParquetFeedbackStore:
                     "ensemble_confidence": pd.Series([], dtype="float64"),
                     "individual_predictions": pd.Series(
                         [], dtype="string"
-                    ),  # JSON string
+                    ),
                     "model_type": pd.Series([], dtype="string"),
                     "voting_strategy": pd.Series([], dtype="string"),
-                    "timestamp": pd.Series([], dtype="datetime64[ns]"),
+                    "timestamp": pd.Series([], dtype="datetime64[ns, UTC]"),
                     "source": pd.Series([], dtype="string"),
                 }
             )
-            # Save empty DataFrame to create the file
+            self._row_count = 0
             self._save_data()
         else:
-            self._data = pd.read_parquet(self.parquet_path)
-            # Ensure the DataFrame has an 'id' column
-            if "id" not in self._data.columns:
-                # Add an 'id' column with sequential numbers
-                self._data = self._data.reset_index(drop=True)
-                self._data["id"] = self._data.index + 1
-                # Save with the new ID column
-                self._save_data()
+            pf = pd.read_parquet(self.parquet_path)
+            self._row_count = len(pf)
+            self._data = None
+
+    def _load_data(self) -> None:
+        """Load data from parquet file into memory (lazy)."""
+        if self._data is not None:
+            return
+        if not self.parquet_path.exists():
+            self._load_metadata()
+            return
+        self._data = pd.read_parquet(self.parquet_path)
+        if "id" not in self._data.columns:
+            self._data = self._data.reset_index(drop=True)
+            self._data["id"] = self._data.index + 1
+            self._save_data()
 
     def _save_data(self) -> None:
         """Save data to parquet file."""
@@ -64,6 +73,7 @@ class ParquetFeedbackStore:
 
     def _get_next_id(self) -> int:
         """Get the next available ID."""
+        self._load_data()
         if len(self._data) == 0 or "id" not in self._data.columns:
             return 1
         return int(self._data["id"].max() + 1)
@@ -71,17 +81,7 @@ class ParquetFeedbackStore:
     def _feedback_exists(
         self, text: str, predicted_label: str, user_label: str
     ) -> bool:
-        """
-        Check if feedback with the same text and labels already exists.
-
-        Args:
-            text: The prompt text
-            predicted_label: What the model predicted
-            user_label: What the user labeled
-
-        Returns:
-            True if feedback exists, False otherwise
-        """
+        self._load_data()
         if len(self._data) == 0:
             return False
 
@@ -105,9 +105,10 @@ class ParquetFeedbackStore:
         ensemble_confidence: float,
         individual_predictions: List[Dict[str, Any]],
         model_type: str = "ensemble",
-        voting_strategy: str = "majority",
+        voting_strategy: str = "weighted",
         source: str = "web_interface",
     ) -> int:
+        self._load_data()
         """
         Add user feedback to the store.
 
@@ -169,6 +170,7 @@ class ParquetFeedbackStore:
         Returns:
             List of feedback dictionaries
         """
+        self._load_data()
         if len(self._data) == 0:
             return []
 
@@ -198,6 +200,7 @@ class ParquetFeedbackStore:
         Returns:
             Feedback dictionary or None if not found
         """
+        self._load_data()
         result = self._data[self._data["id"] == feedback_id]
         if len(result) == 0:
             return None
@@ -238,6 +241,7 @@ class ParquetFeedbackStore:
         Returns:
             List of matching feedback dictionaries
         """
+        self._load_data()
         if len(self._data) == 0:
             return []
 

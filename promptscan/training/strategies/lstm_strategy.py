@@ -34,7 +34,7 @@ class LSTMTrainer(BaseTrainer):
             self.optimizer,
             mode="max",
             factor=0.5,
-            patience=2,
+            patience=3,
             min_lr=1e-6,
         )
 

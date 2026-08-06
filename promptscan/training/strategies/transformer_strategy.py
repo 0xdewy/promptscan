@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from transformers import get_linear_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup
 
 from ...config import ModelConfig
 from ...models.transformer_model import TransformerModel
@@ -20,19 +20,28 @@ class TransformerTrainer(BaseTrainer):
     """Transformer-specific trainer."""
 
     def _create_optimizer(self) -> torch.optim.Optimizer:
-        """Create AdamW optimizer for transformer."""
+        """Create AdamW optimizer with discriminative learning rates."""
+        backbone = self.model.model.distilbert
+        head_params = list(self.model.model.pre_classifier.parameters()) + list(
+            self.model.model.classifier.parameters()
+        )
         return optim.AdamW(
-            self.model.parameters(),
-            lr=self.config.learning_rate,
+            [
+                {"params": backbone.parameters(), "lr": self.config.learning_rate * 0.1},
+                {"params": head_params, "lr": self.config.learning_rate},
+            ],
             weight_decay=0.01,
         )
 
     def _create_scheduler(self):
-        """Create learning rate scheduler with warmup for transformer."""
-        num_training_steps = len(self.train_loader) * self.config.epochs
-        num_warmup_steps = int(0.1 * num_training_steps)  # 10% warmup
+        """Create cosine learning rate scheduler with warmup."""
+        effective_epochs = self.config.epochs
+        accum = getattr(self.config, 'grad_accumulation_steps', 1)
+        steps_per_epoch = max(1, len(self.train_loader) // max(1, accum))
+        num_training_steps = steps_per_epoch * effective_epochs
+        num_warmup_steps = int(0.1 * num_training_steps)
 
-        return get_linear_schedule_with_warmup(
+        return get_cosine_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=num_warmup_steps,
             num_training_steps=num_training_steps,
@@ -42,7 +51,6 @@ class TransformerTrainer(BaseTrainer):
         self, batch: Dict[str, torch.Tensor]
     ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """Prepare batch for transformer forward pass."""
-        # Include all keys except 'label' as inputs to transformer
         inputs = {}
         for key in batch.keys():
             if key != "label":
@@ -52,13 +60,8 @@ class TransformerTrainer(BaseTrainer):
         return inputs, labels
 
     def train_epoch(self) -> Dict[str, float]:
-        """Train for one epoch with gradient clipping."""
-        metrics = super().train_epoch()
-
-        # Transformer-specific: gradient clipping
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-
-        return metrics
+        """Train for one epoch."""
+        return super().train_epoch()
 
 
 class TransformerTrainingStrategy(TrainingStrategy):
