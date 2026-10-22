@@ -45,6 +45,7 @@ class UnifiedDetector:
                 voting_strategy=kwargs.get("voting_strategy", "weighted"),
                 device=self.device,
                 confidence_threshold=confidence_threshold,
+                include_pretrained=kwargs.get("include_pretrained", False),
             )
         else:
             if model_path is None:

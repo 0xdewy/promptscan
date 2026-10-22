@@ -146,8 +146,8 @@ dmypy.json
 output/
 results/
 predictions/
-checkpoints/
-models/
+/checkpoints/
+/models/
 
 # HuggingFace Spaces
 app.py

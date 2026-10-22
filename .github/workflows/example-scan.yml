@@ -1,0 +1,15 @@
+# Example: scan a prompts/ directory on every push and PR.
+name: scan prompts
+on:
+  push:
+    paths: ["prompts/**"]
+  pull_request:
+    paths: ["prompts/**"]
+jobs:
+  promptscan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: 0xdewy/promptscan@master
+        with:
+          path: prompts

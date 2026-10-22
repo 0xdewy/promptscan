@@ -1,0 +1,34 @@
+name: promptscan
+description: Scan prompt files for prompt injection with promptscan's neural-net ensemble.
+branding:
+  icon: shield
+  color: purple
+inputs:
+  path:
+    description: File or directory to scan.
+    required: false
+    default: .
+  fail-on-injection:
+    description: Fail the job when any INJECTION is found.
+    required: false
+    default: "true"
+  python-version:
+    description: Python version to use.
+    required: false
+    default: "3.12"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - shell: bash
+      run: pip install --quiet promptscan
+    - shell: bash
+      run: |
+        set -o pipefail
+        promptscan "${{ inputs.path }}" | tee promptscan.log
+        if [ "${{ inputs.fail-on-injection }}" = "true" ] && grep -q "INJECTION" promptscan.log; then
+          echo "::error::prompt injection found in ${{ inputs.path }}"
+          exit 1
+        fi

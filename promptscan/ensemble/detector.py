@@ -180,9 +180,13 @@ class EnsembleDetector:
         voting_strategy: str = "weighted",
         device: str = "cpu",
         confidence_threshold: float = 0.5,
+        include_pretrained: bool = False,
     ) -> "EnsembleDetector":
         """
         Load ensemble from pretrained models with dynamic weights from configs.
+
+        include_pretrained adds an off-the-shelf HF classifier (deepset deberta, ~740 MB,
+        hundreds of ms per call on CPU) as a fourth voter. Off by default.
         """
         from .. import get_model_path
 
@@ -212,7 +216,7 @@ class EnsembleDetector:
             except FileNotFoundError:
                 print(f"Warning: {model_name} not found, skipping in ensemble")
 
-        pretrained_f1 = 0.7
+        pretrained_f1 = 0.7 if include_pretrained else 0.0
         total_f1 += pretrained_f1
 
         for tc in temp_configs:
@@ -225,11 +229,12 @@ class EnsembleDetector:
                 "calibration_temperature": tc["calibration_temperature"],
             })
 
-        model_configs.append({
-            "type": "pretrained",
-            "checkpoint_path": None,
-            "weight": pretrained_f1 / total_f1 if total_f1 > 0 else 0.25,
-        })
+        if include_pretrained:
+            model_configs.append({
+                "type": "pretrained",
+                "checkpoint_path": None,
+                "weight": pretrained_f1 / total_f1 if total_f1 > 0 else 0.25,
+            })
 
         if not model_configs:
             raise FileNotFoundError(
