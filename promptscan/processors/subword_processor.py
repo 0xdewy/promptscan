@@ -28,18 +28,22 @@ class SubwordProcessor(BaseProcessor):
                 "Transformers library is not installed. "
                 "Install with: pip install transformers"
             )
-        # Use local models only to avoid HF Hub warnings
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_name, local_files_only=True
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Tokenizer for '{model_name}' not found locally. Please download it first.\n"
-                f'Run: python -c "from transformers import AutoTokenizer; '
-                f"AutoTokenizer.from_pretrained('{model_name}')\"\n"
-                f"Original error: {e}"
-            )
+        # Prefer the local cache, but a partial cache can yield a tokenizer with no
+        # vocabulary (every token becomes [UNK]); detect that and download properly.
+        self.tokenizer = None
+        for local_only in (True, False):
+            try:
+                tok = AutoTokenizer.from_pretrained(model_name, local_files_only=local_only)
+            except Exception as e:  # noqa: BLE001
+                if not local_only:
+                    raise RuntimeError(f"Tokenizer for '{model_name}' could not be loaded: {e}") from e
+                continue
+            probe = tok("the quick brown fox", add_special_tokens=False)["input_ids"]
+            if probe and len(set(probe)) > 1 and tok.unk_token_id not in probe:
+                self.tokenizer = tok
+                break
+        if self.tokenizer is None:
+            raise RuntimeError(f"Tokenizer for '{model_name}' is unusable (no vocabulary)")
         self.max_length = max_length
 
     def encode(self, text: str) -> Dict[str, torch.Tensor]:

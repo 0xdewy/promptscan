@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-__version__ = VERSION = "0.1.3"
+__version__ = VERSION = "0.1.4"
 
 
 def _is_source_install() -> bool:
