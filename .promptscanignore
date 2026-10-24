@@ -1,0 +1,3 @@
+# paths promptscan skips in this repo (globs, one per line)
+README.md
+tests/fixtures/

@@ -165,3 +165,6 @@ gradio_temp/
 # v2 training and eval data (rebuilt by scripts/build_dataset.py and scripts/eval_suite.py)
 data/v2/
 data/eval/
+
+# Old ensemble code, kept out of git
+archive/

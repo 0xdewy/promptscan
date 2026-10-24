@@ -7,10 +7,8 @@ lmsys/toxic-chat (test split; jailbreaking rows are positives, the rest benign).
 Everything is cached under data/eval/ as parquet; build_dataset.py dedups the
 training data against it.
 
-  python scripts/eval_suite.py --scorer ensemble --out results/ensemble.jsonl
-  python scripts/eval_suite.py --scorer transformer|cnn|lstm
+  python scripts/eval_suite.py --scorer v2:models/release --out results/release.jsonl
   python scripts/eval_suite.py --scorer hf:deepset/deberta-v3-base-injection
-  python scripts/eval_suite.py --scorer v2:models/v2            # new classifier dir
   python scripts/eval_suite.py --report results/*.jsonl         # tables only
 
 A scorer maps texts -> P(injection). The report gives per-set AUC, recall and FPR
@@ -65,24 +63,6 @@ def load_sets() -> dict[str, pd.DataFrame]:
 
 # ---- scorers: name -> (score fn: list[str] -> np.ndarray of P(injection), threshold)
 
-def scorer_promptscan(kind: str):
-    from promptscan import UnifiedDetector
-
-    d = UnifiedDetector(model_type=kind, voting_strategy="majority")
-
-    def score(texts):
-        out = []
-        for t in texts:
-            r = d.predict(t[:10000])
-            probs = r.get("class_probabilities") or r.get("probabilities") or {}
-            p = probs.get("INJECTION") if isinstance(probs, dict) else None
-            if p is None:  # fall back to the winning class's confidence
-                p = r["confidence"] if r["prediction"] == "INJECTION" else 1 - r["confidence"]
-            out.append(p)
-        return np.array(out)
-    return score, 0.5
-
-
 def scorer_hf(model_id: str, max_length: int = 512, batch: int = 16):
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -113,8 +93,6 @@ def scorer_v2(path: str):
 
 
 def get_scorer(name: str):
-    if name in ("ensemble", "transformer", "cnn", "lstm"):
-        return scorer_promptscan(name)
     if name.startswith("hf:"):
         return scorer_hf(name[3:])
     if name.startswith("v2:"):

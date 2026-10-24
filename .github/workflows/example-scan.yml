@@ -1,15 +1,25 @@
-# Example: scan a prompts/ directory on every push and PR.
-name: scan prompts
+# Example: scan agent instruction files and prompts on every pull request.
+# Copy into your repo's .github/workflows/. On PRs only changed files are scanned;
+# on push the whole directory is. Findings show up as annotations and, with the
+# upload step, in the Security tab.
+name: promptscan
 on:
-  push:
-    paths: ["prompts/**"]
   pull_request:
-    paths: ["prompts/**"]
+  push:
+    branches: [main, master]
+permissions:
+  contents: read
+  security-events: write
 jobs:
   promptscan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: 0xdewy/promptscan@master
+        id: scan
         with:
-          path: prompts
+          path: .
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
