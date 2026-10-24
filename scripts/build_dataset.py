@@ -276,7 +276,7 @@ def main() -> int:
             d = pd.read_parquet(p)
             d["source"] = name
             frames.append(d)
-    for p in sorted(RAW.glob("selfplay_*.parquet")):   # written by selfplay.py
+    for p in sorted([*RAW.glob("selfplay_*.parquet"), *RAW.glob("rl_*.parquet")]):   # selfplay.py, rl_attacker.py --harvest
         frames.append(pd.read_parquet(p)[["text", "label", "source"]])
 
     all_ = pd.concat(frames, ignore_index=True)

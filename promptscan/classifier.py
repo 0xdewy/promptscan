@@ -1,4 +1,4 @@
-"""Single transformer classifier (v2): a fine-tuned DeBERTa-v3 that outputs P(injection).
+"""The promptscan classifier: a fine-tuned DeBERTa-v3 that outputs P(injection).
 
 Long inputs are scored in overlapping windows and the max window score wins, so an
 injection buried in page 3 of a document is not diluted by pages 1 and 2.
@@ -12,7 +12,7 @@ from typing import Any
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-DEFAULT_REPO = "0xdewy/promptscan-v2"
+DEFAULT_REPO = "0xdewy/promptscan"
 
 
 class Classifier:

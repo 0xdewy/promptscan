@@ -53,13 +53,17 @@ def main() -> int:
     ap.add_argument("--accum", type=int, default=4, help="gradient accumulation steps")
     ap.add_argument("--max-length", type=int, default=512)
     ap.add_argument("--limit", type=int, default=0, help="train rows cap (smoke test)")
+    ap.add_argument("--drop-sources", nargs="*", default=[], help="source prefixes to leave out (ablations)")
     ap.add_argument("--eval-steps", type=int, default=200, help="evaluate val + FP probe every N optimizer steps")
     a = ap.parse_args()
 
     train = pd.read_parquet(f"{a.data}/train.parquet")
     val = pd.read_parquet(f"{a.data}/val.parquet")
+    if a.drop_sources:
+        train = train[~train.source.str.startswith(tuple(a.drop_sources))]
+        val = val[~val.source.str.startswith(tuple(a.drop_sources))]
     if a.limit:   # subsample, but always keep the (small, targeted) self-play rows
-        sp = train.source.str.startswith("selfplay")
+        sp = train.source.str.startswith(("selfplay", "rl_"))
         train = pd.concat([train[sp], train[~sp].sample(a.limit - sp.sum(), random_state=0)])
     print(f"train {len(train)} ({train.label.mean():.2%} pos), val {len(val)} ({val.label.mean():.2%} pos)")
 

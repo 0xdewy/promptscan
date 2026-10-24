@@ -129,10 +129,10 @@ BACKENDS = {"claude": claude, "ollama": ollama}
 def parse_json(text: str):
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
-    start, end = text.find("["), text.rfind("]")
-    if start < 0 or end < 0:
+    start = text.find("[")
+    if start < 0:
         raise ValueError("no JSON array")
-    return json.loads(text[start:end + 1])
+    return json.JSONDecoder().raw_decode(text[start:])[0]   # first array; ignore trailing text
 
 
 def generate(backend: str, label: int, kind: str, n: int, exemplars: list[str]) -> list[dict]:
