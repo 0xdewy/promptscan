@@ -72,5 +72,6 @@ The decision threshold ships with the model (0.97 for the current release) and i
 
 ## Changelog
 
+- 0.2.1: `promptscan-mcp` works with the `mcp` 2.x package (FastMCP was renamed MCPServer).
 - 0.2.0: single DeBERTa-v3 classifier replaces the CNN/LSTM/DistilBERT ensemble. CLI rewritten around repo scanning: recursive, multiple paths, `--changed`, `--json`, `--sarif`, `--exclude`/`.promptscanignore`, exit codes. Hidden-Unicode detection (zero-width, bidi, tag characters) with the hidden text decoded. HTML comments scored separately. GitHub Action scans only PR-changed files, caches the model, writes SARIF. pre-commit hook. MCP server gains `scan_path`.
 - 0.1.4: fixed the BiLSTM reading its state from trailing padding; fixed the tokenizer silently loading with no vocabulary from a partial Hugging Face cache; MCP server, GitHub Action, benchmark script.

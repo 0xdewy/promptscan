@@ -1,6 +1,6 @@
 [project]
 name = "promptscan"
-version = "0.2.0"
+version = "0.2.1"
 description = "Prompt injection detection for the files your AI agents read and the text your app feeds them"
 readme = "README.md"
 requires-python = ">=3.10"

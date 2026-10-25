@@ -1,6 +1,6 @@
 """promptscan: prompt injection detection."""
 
-__version__ = VERSION = "0.2.0"
+__version__ = VERSION = "0.2.1"
 
 from .classifier import Classifier  # noqa: E402
 
