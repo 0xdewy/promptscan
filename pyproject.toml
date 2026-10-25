@@ -3,7 +3,7 @@ name = "promptscan"
 version = "0.2.2"
 description = "Prompt injection detection for the files your AI agents read and the text your app feeds them"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [
     {name = "0xdewy"},
@@ -15,7 +15,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Security",
@@ -79,9 +78,6 @@ markdown = [
 mcp = [
     "mcp>=1.2.0",
 ]
-web = [
-    "gradio>=4.0.0",
-]
 rl = [
     "peft>=0.21.2",
     "trl>=1.14.2",
@@ -95,7 +91,7 @@ link-mode = "copy"
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
