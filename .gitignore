@@ -168,3 +168,6 @@ data/eval/
 
 # Old ensemble code, kept out of git
 archive/
+
+# Training data stays on disk, not in git: every Action run downloads this repo
+data/
