@@ -39,7 +39,9 @@ jobs:
 ```
 
 On pull requests the action scans only text files the PR changed (`changed-only: "true"`),
-so a repo full of existing prompts can adopt it without a cleanup first. Findings appear as
+so a repo full of existing prompts can adopt it without a cleanup first. The diff is taken
+against the current tip of the base branch, so commits that land on the base after the PR
+was opened are not scanned as part of it. Findings appear as
 inline annotations on the PR. The model (280 MB) is cached between runs.
 
 Which files: `.md`, `.markdown`, `.mdc`, `.txt`, `.rst`, `.adoc`, `.prompt`, `.rules` and
