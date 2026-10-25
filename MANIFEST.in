@@ -1,3 +1,10 @@
 include README.md
 include LICENSE
 recursive-include promptscan *.py
+prune data
+prune models
+prune results
+prune tests
+prune scripts
+prune archive
+prune docs
