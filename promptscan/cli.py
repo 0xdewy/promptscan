@@ -132,7 +132,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     files = list(S.iter_files(paths, a.include, a.exclude))
     if a.changed:
-        files += S.changed_files(a.changed, a.include)
+        files += S.changed_files(a.changed, a.include, a.exclude)
     n, findings = S.scan_files(files, clf)
     for label, text in texts:
         if text.strip():

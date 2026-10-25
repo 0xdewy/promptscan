@@ -50,7 +50,7 @@ runs:
         pip install --quiet "promptscan${{ inputs.version && format('=={0}', inputs.version) || '' }}"
     - shell: bash
       env:
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        BASE_REF: ${{ github.base_ref }}
         PATH_INPUT: ${{ inputs.path }}
         CHANGED_ONLY: ${{ inputs.changed-only }}
         FAIL: ${{ inputs.fail }}
@@ -60,9 +60,12 @@ runs:
         args=(--sarif "$SARIF")
         [ -n "$THRESHOLD" ] && args+=(--threshold "$THRESHOLD")
         [ "$FAIL" = "true" ] || args+=(--no-fail)
-        if [ "$CHANGED_ONLY" = "true" ] && [ -n "$BASE_SHA" ]; then
-          git fetch --quiet --depth=1 origin "$BASE_SHA"
-          promptscan --changed "$BASE_SHA" "${args[@]}"
+        if [ "$CHANGED_ONLY" = "true" ] && [ -n "$BASE_REF" ]; then
+          # The checkout is the PR merged into the current base tip, so diffing against
+          # that tip yields exactly the PR's changes, even when the base moved after the
+          # PR was opened. (pull_request.base.sha is frozen at PR creation.)
+          git fetch --quiet --depth=1 origin "$BASE_REF"
+          promptscan --changed FETCH_HEAD "${args[@]}"
         else
           promptscan "$PATH_INPUT" "${args[@]}"
         fi
