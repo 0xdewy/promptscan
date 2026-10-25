@@ -41,6 +41,8 @@ PROMPTSCAN_MODEL=models/release uv run promptscan .   # dogfood; .promptscanigno
 uv run python scripts/eval_suite.py         # held-out evaluation
 uv build && twine check dist/*              # package
 HF_TOKEN=... uv run python scripts/publish_model.py models/release   # replace the HF model repo
+uv run python scripts/fetch_feedback.py     # pull website feedback into data/v2/raw/feedback.parquet (unverified labels)
+uv lock --upgrade && uv run pytest tests/   # dependency refresh; pip-audit via `uvx pip-audit -r <(uv export --no-hashes)`
 ```
 
 ## Rules
