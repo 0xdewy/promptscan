@@ -207,18 +207,28 @@ def iter_files(
                     yield p
 
 
-def changed_files(base: str, include: Iterable[str] = ()) -> list[Path]:
-    """Text files added or modified since ``base`` (a git ref), for pull-request scans."""
+def changed_files(
+    base: str, include: Iterable[str] = (), exclude: Iterable[str] = ()
+) -> list[Path]:
+    """Text files added or modified since ``base`` (a git ref), for pull-request scans.
+
+    Honours ``exclude`` and the ``.promptscanignore`` in the current directory, like a
+    directory scan does.
+    """
     out = subprocess.run(
         ["git", "diff", "--name-only", "--diff-filter=AMR", base],
         capture_output=True,
         text=True,
         check=True,
     ).stdout
+    patterns = _ignore_patterns(Path("."), exclude)
     return [
         Path(ln)
         for ln in out.splitlines()
-        if ln and Path(ln).is_file() and is_text_file(Path(ln), include)
+        if ln
+        and Path(ln).is_file()
+        and is_text_file(Path(ln), include)
+        and not _ignored(ln, patterns)
     ]
 
 

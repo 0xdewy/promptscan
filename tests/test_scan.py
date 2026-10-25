@@ -62,6 +62,30 @@ def test_iter_files_and_ignore(tmp_path: Path):
     assert n == 2 and findings == []  # binary file skipped
 
 
+def test_changed_files_honours_ignore(tmp_path: Path, monkeypatch):
+    import subprocess
+
+    monkeypatch.chdir(tmp_path)
+    git = lambda *a: subprocess.run(["git", *a], check=True, capture_output=True)  # noqa: E731
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "README.md").write_text("base")
+    (tmp_path / S.IGNORE_FILE).write_text("README.md\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    (tmp_path / "README.md").write_text("changed")
+    (tmp_path / "AGENTS.md").write_text("new")
+    (tmp_path / "main.py").write_text("x = 1")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "x.md").write_text("new")
+    git("add", "-A")  # in CI the PR's files are committed; git diff only sees tracked files
+
+    names = sorted(p.as_posix() for p in S.changed_files("HEAD"))
+    assert names == ["AGENTS.md", "docs/x.md"]  # README ignored, main.py not a text file
+    assert S.changed_files("HEAD", exclude=["docs/"]) == [Path("AGENTS.md")]
+
+
 def test_sarif_shape():
     f = S.Finding("a.md", 3, "injection", "prompt injection", "snip", 0.99)
     sarif = S.to_sarif([f], "0")
