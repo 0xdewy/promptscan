@@ -16,6 +16,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Must be set before anything imports huggingface_hub (transformers does, via the classifier).
+# The Rust xet uploader hangs forever when the server closes its connection mid-upload.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from promptscan.classifier import DEFAULT_REPO, Classifier  # noqa: E402
@@ -43,7 +47,19 @@ def main() -> int:
     token = os.environ.get("HF_TOKEN")
     if not token:
         sys.exit("HF_TOKEN is not set")
-    from huggingface_hub import HfApi
+    # The default client has no timeout, so a half-closed connection hangs it forever.
+    import httpx
+    from huggingface_hub import HfApi, set_client_factory
+    from huggingface_hub.utils._http import hf_request_event_hook
+
+    set_client_factory(
+        lambda: httpx.Client(
+            transport=httpx.HTTPTransport(retries=3),
+            event_hooks={"request": [hf_request_event_hook]},
+            follow_redirects=True,
+            timeout=httpx.Timeout(60, read=300),
+        )
+    )
 
     api = HfApi(token=token)
     print(f"logged in as {api.whoami()['name']}, target {a.repo}")
