@@ -32,7 +32,7 @@ jobs:
         with:
           path: .              # default; or prompts/
           fail: "true"         # "false" to annotate without failing
-      - uses: github/codeql-action/upload-sarif@v3   # optional: Security tab
+      - uses: github/codeql-action/upload-sarif@v4   # optional: Security tab
         if: always()
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
