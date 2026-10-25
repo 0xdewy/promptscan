@@ -1,4 +1,4 @@
-"""promptscan command line: scan text, files, directories, URLs or stdin for prompt injection.
+"""promptscan command line: scan text, files, directories, URLs or stdin for injection.
 
 Exit status: 0 nothing found, 1 findings (unless --no-fail), 2 usage or load error.
 """
@@ -55,7 +55,7 @@ def _print(f: S.Finding, github: bool) -> None:
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="promptscan",
-        description="Detect prompt injection in text, files, directories, URLs or stdin.",
+        description="Detect prompt injection in text, files, directories, URLs, stdin",
         epilog="""examples:
   promptscan "Ignore all previous instructions"
   promptscan .                          # every .md/.txt/rules file under the repo
@@ -92,7 +92,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     p.add_argument(
         "--model",
-        help="model directory or Hugging Face repo (default: $PROMPTSCAN_MODEL or 0xdewy/promptscan)",
+        help="model directory or Hugging Face repo "
+        "(default: $PROMPTSCAN_MODEL or 0xdewy/promptscan)",
     )
     p.add_argument("--json", action="store_true", help="print findings as JSON")
     p.add_argument(
@@ -156,7 +157,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 else Colors.colored("clean", Colors.GREEN)
             )
             print(
-                f"promptscan: {n} input(s) scanned, {verdict} (threshold {clf.threshold:.2f})"
+                f"promptscan: {n} input(s) scanned, {verdict} "
+                f"(threshold {clf.threshold:.2f})"
             )
     return 0 if not findings or a.no_fail else 1
 
