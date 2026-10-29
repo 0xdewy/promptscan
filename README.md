@@ -56,6 +56,25 @@ About 80 ms per text on CPU after a one-off 4 s load. Long texts are scored in o
 
 Also: an MCP server (`promptscan-mcp`) with `scan_text`, `scan_many` and `scan_path` tools, a Claude Code hook that blocks reading injected files, and a FastAPI example. Copy-paste configs in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
+## Claude Code plugin
+
+Requires `uv` and Python 3.11 or later. Install the skill and local MCP server:
+
+```text
+/plugin marketplace add 0xdewy/promptscan
+/plugin install promptscan@promptscan-plugins
+```
+
+The plugin launches pinned `promptscan[mcp]==0.3.0` through `uvx`. First use
+requires internet access to download Python dependencies and the 568 MB model;
+allow several GB for dependencies and cache. Scanning runs locally and does not
+send input text to the hosted API. Tools can read paths you supply. The skill
+is `/promptscan:promptscan`. Detection can miss attacks or flag legitimate text;
+a SAFE result is not permission to execute instructions.
+
+This is an installable repository marketplace, not an endorsement or acceptance
+by Anthropic's curated directory.
+
 ## Hosted API
 
 ```bash

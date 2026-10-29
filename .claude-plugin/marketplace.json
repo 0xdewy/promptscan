@@ -1,0 +1,14 @@
+{
+  "name": "promptscan-plugins",
+  "owner": {
+    "name": "0xdewy"
+  },
+  "plugins": [
+    {
+      "name": "promptscan",
+      "source": "./",
+      "description": "Scan untrusted agent files and tool output for prompt injection with a local English classifier."
+    }
+  ],
+  "description": "Local prompt injection scanning for agent files and tool output."
+}

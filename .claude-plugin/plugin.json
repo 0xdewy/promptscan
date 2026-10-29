@@ -1,0 +1,27 @@
+{
+  "name": "promptscan",
+  "version": "0.3.0",
+  "description": "Scan untrusted agent files and tool output for prompt injection with a local English classifier.",
+  "author": {
+    "name": "0xdewy"
+  },
+  "homepage": "https://promptscan.dewy.ch",
+  "repository": "https://github.com/0xdewy/promptscan",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "prompt-injection",
+    "mcp"
+  ],
+  "mcpServers": {
+    "promptscan": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "promptscan[mcp]==0.3.0",
+        "promptscan-mcp"
+      ]
+    }
+  },
+  "icon": "./.claude-plugin/icon.png"
+}

@@ -172,3 +172,6 @@ archive/
 
 # Training data stays on disk, not in git: every Action run downloads this repo
 data/
+
+# Distributable plugin manifests
+!.claude-plugin/*.json
