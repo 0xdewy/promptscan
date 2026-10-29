@@ -17,6 +17,12 @@
     "promptscan": {
       "command": "uvx",
       "args": [
+        "--index",
+        "https://download.pytorch.org/whl/cpu",
+        "--index-strategy",
+        "unsafe-best-match",
+        "--with",
+        "torch==2.15.0",
         "--from",
         "promptscan[mcp]==0.3.0",
         "promptscan-mcp"

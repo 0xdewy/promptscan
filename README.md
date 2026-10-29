@@ -65,7 +65,8 @@ Requires `uv` and Python 3.11 or later. Install the skill and local MCP server:
 /plugin install promptscan@promptscan-plugins
 ```
 
-The plugin launches pinned `promptscan[mcp]==0.3.0` through `uvx`. First use
+The plugin launches pinned `promptscan[mcp]==0.3.0` through `uvx`, using the official
+PyTorch CPU index to avoid downloading CUDA libraries. First use
 requires internet access to download Python dependencies and the 568 MB model;
 allow several GB for dependencies and cache. Scanning runs locally and does not
 send input text to the hosted API. Tools can read paths you supply. The skill
