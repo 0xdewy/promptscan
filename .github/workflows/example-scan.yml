@@ -1,4 +1,6 @@
 # Example: scan agent instruction files and prompts on every pull request.
+# This detector repo scans its shipped runtime, excluding attack-data builders.
+# In a consumer repo, set path to . to scan all supported files.
 # Copy into your repo's .github/workflows/. On PRs only changed files are scanned;
 # on push the whole directory is. Findings show up as annotations and, with the
 # upload step, in the Security tab.
@@ -18,7 +20,7 @@ jobs:
       - uses: 0xdewy/promptscan@master
         id: scan
         with:
-          path: .
+          path: promptscan
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:

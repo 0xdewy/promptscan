@@ -1,6 +1,6 @@
 [project]
 name = "promptscan"
-version = "0.2.2"
+version = "0.3.0"
 description = "Prompt injection detection for the files your AI agents read and the text your app feeds them"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,14 +28,9 @@ dependencies = [
     "safetensors>=0.4.0",
     "huggingface-hub>=0.20.0",
     "requests>=2.31.0",
-    "pandas>=2.0.0",
     "numpy>=1.24.0",
-    "pyarrow>=17.0.0",
-    "transformers>=4.30.0",
+    "transformers>=4.56.0",
     "tokenizers>=0.13.0",
-    "psutil>=5.9.0",
-    "datasets>=4.8.4",
-    "scikit-learn>=1.7.2",
     "sentencepiece>=0.2.2",
     "protobuf>=7.36.2",
 ]
@@ -61,6 +56,15 @@ include-package-data = true
 
 
 [project.optional-dependencies]
+train = [
+    "pandas>=2.0.0",
+    "pyarrow>=17.0.0",
+    "psutil>=5.9.0",
+    "datasets>=4.8.4",
+    "scikit-learn>=1.7.2",
+    "scipy>=1.10.0",
+    "accelerate>=1.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "ruff>=0.1.0",
@@ -79,6 +83,7 @@ mcp = [
     "mcp>=1.2.0",
 ]
 rl = [
+    "promptscan[train]",
     "peft>=0.21.2",
     "trl>=1.14.2",
 ]

@@ -1,3 +1,9 @@
 # paths promptscan skips in this repo (globs, one per line)
 README.md
 tests/fixtures/
+# Local training artifacts and generated package metadata are not agent inputs.
+data/
+results/
+models/
+archive/
+*.egg-info/

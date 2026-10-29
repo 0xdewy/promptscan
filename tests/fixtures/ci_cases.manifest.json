@@ -1,0 +1,17 @@
+{
+  "label_contract": "ci-contract-2",
+  "sha256": "690bc34a569d339512e9f7d935992d93066584c623871f65c9346aa1ddca75f0",
+  "rows": 156,
+  "splits": {
+    "train": 72,
+    "calibration": 48,
+    "test": 36
+  },
+  "limitation": "Synthetic pairs; one adapted external test attack family. No population-level claim. Base-model pretraining exposure unknown.",
+  "source_manifest_sha256": "0d26900c23e32707b7631cd6ba35057d62f823edeba6a2e8b1e8cb66f80bce85",
+  "source_rows": 10,
+  "total_rows": 166,
+  "excluded_sources": [
+    "astral-sh/ruff/CLAUDE.md: normalized text already present in local training data"
+  ]
+}

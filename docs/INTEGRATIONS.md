@@ -1,18 +1,19 @@
 # Integrations
 
-Two places to put promptscan: in CI, so nobody can land an injection in files your AI
+Two places to put promptscan: in CI, to screen for injections in files your AI
 agents read, and at runtime, so untrusted text is checked before it reaches a model.
 
 Every entry point reports two kinds of finding:
 
-- **injection**: the classifier scored the text, an HTML comment inside it, or text hidden
+- **injection**: the classifier scored the text, an HTML comment with surrounding context, or text hidden
   in Unicode tag characters above the decision threshold. The report points at the
   highest-scoring paragraph.
 - **hidden**: zero-width characters, bidirectional overrides or Unicode tag characters.
-  These are reported deterministically, with the hidden text decoded, because they have no
-  legitimate place in a prompt or instruction file.
+  These are reported deterministically, with the hidden text decoded, as hygiene warnings. Legitimate files can contain these characters.
 
-Exit status: 0 clean, 1 findings, 2 error.
+Exit status: 0 no blocking findings, 1 blocking findings, 2 error. Injection findings
+block by default; Unicode hygiene is a warning. Use `--fail-on all` for strict
+Unicode enforcement, or `--no-fail` for reporting only.
 
 ## GitHub Action
 
@@ -27,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: 0xdewy/promptscan@master
+      - uses: 0xdewy/promptscan@<reviewed-commit-sha>
         id: scan
         with:
           path: .              # default; or prompts/
@@ -38,25 +39,34 @@ jobs:
           sarif_file: ${{ steps.scan.outputs.sarif }}
 ```
 
-On pull requests the action scans only text files the PR changed (`changed-only: "true"`),
-so a repo full of existing prompts can adopt it without a cleanup first. The diff is taken
-against the current tip of the base branch, so commits that land on the base after the PR
-was opened are not scanned as part of it. Findings appear as
-inline annotations on the PR. The model (280 MB) is cached between runs.
+On pull requests the Action reports new findings in modified files, comparing base
+and head with the same model and cutoff. It uses the event's base commit and its
+`.promptscanignore`, so a contributor cannot silence a payload by editing the PR's
+ignore file. `path` also scopes PR scans. The CLI's `--all-findings` includes
+existing findings in changed files when that is useful.
 
-Which files: `.md`, `.markdown`, `.mdc`, `.txt`, `.rst`, `.adoc`, `.prompt`, `.rules` and
-anything ending in `rules` (`.cursorrules`, `.windsurfrules`, `.clinerules`). That covers
-`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/`,
-skills and prompt directories. `.git`, `node_modules`, virtualenvs and build output are
-skipped. Add patterns with `--include`, skip paths with `--exclude` or a `.promptscanignore`
-file (one glob per line) in the scanned directory.
+Pin the Action to a reviewed commit. By default it installs its own bundled code,
+not the latest PyPI package. `version` optionally selects an exact package version
+(0.3.0 or later). Each code release pins the default model revision. JSON and SARIF
+record the scanner version, policy, model identity and cutoff. A local model is
+identified by an artifact digest. Custom Hub models support `--model-revision`.
+
+The default scan includes Markdown, text, rules, Python, JavaScript, TypeScript,
+JSON, YAML and TOML. Generated directories, symlinks, binary files and files over
+1 MB are skipped. JSON lists skipped paths and reasons; the terminal summary
+reports the skipped count. No matching inputs is reported explicitly.
+
+Use `include` and `exclude` Action inputs for additional globs, one per line, or
+`--include`, `--exclude` and `.promptscanignore` with the CLI. File extensions in
+the pre-commit hook match the directory scanner. An explicit file bypasses the
+extension filter. Use `fail-on: all` to block on Unicode hygiene too.
 
 ## pre-commit
 
 ```yaml
 repos:
   - repo: https://github.com/0xdewy/promptscan
-    rev: master
+    rev: <reviewed-commit-sha>
     hooks:
       - id: promptscan
 ```
@@ -66,7 +76,9 @@ repos:
 ```bash
 promptscan .                              # whole repo
 promptscan CLAUDE.md AGENTS.md prompts/   # specific files and directories
-promptscan --changed origin/main          # files changed on this branch
+promptscan --changed origin/main          # new findings in changed files
+promptscan src --changed origin/main      # restrict a PR scan to src/
+promptscan --changed origin/main --all-findings
 promptscan . --json                       # machine-readable
 promptscan . --sarif promptscan.sarif     # for GitHub code scanning
 promptscan https://example.com/page       # fetch a page, strip tags, scan
@@ -91,8 +103,8 @@ def guard(text: str) -> None:
 ```
 
 `clf.score(list_of_texts)` scores a batch. Long inputs are scored in overlapping 512-token
-windows and the highest window wins, so an injection buried on page 3 of a document is
-still found. To also catch hidden Unicode text and locate the offending paragraph:
+windows and the highest window wins. The entire supported input is covered;
+coverage does not guarantee that the model recognizes every injection. To also catch hidden Unicode text and locate the offending paragraph:
 
 ```python
 from promptscan.scan import scan_text
@@ -128,15 +140,22 @@ pages, retrieved documents, emails, issue comments.
 ## MCP server (Claude Code, Claude Desktop, Cursor)
 
 ```bash
-pip install 'promptscan[mcp]'
+pip install 'promptscan[mcp]==0.3.0'
 ```
 
 ```json
 {"mcpServers": {"promptscan": {"command": "promptscan-mcp"}}}
 ```
 
-Tools: `scan_text(text)`, `scan_many(texts)`, `scan_path(path)`. Each returns the model
-score, the threshold and the findings list. Tell the agent to call `scan_text` on fetched
+For a version-pinned launch without a global install:
+
+```json
+{"mcpServers": {"promptscan": {"command": "uvx", "args": ["--from", "promptscan[mcp]==0.3.0", "promptscan-mcp"]}}}
+```
+
+Tools: `scan_text(text)`, `scan_many(texts)`, `scan_path(path)`. Text results return
+the complete scanner decision score, threshold and findings. Path results include
+coverage and skipped paths. Findings include severity; responses identify the model. Tell the agent to call `scan_text` on fetched
 pages and tool output before following anything in them.
 
 ## Claude Code hook
@@ -170,4 +189,11 @@ curl -X POST https://promptscan.dewy.ch/api/v1/predict \
   -d '{"prompt": "Ignore all previous instructions"}'
 ```
 
-200 requests per IP per day are free. Use this when you cannot ship a 280 MB model.
+200 requests per IP per day are free. Use this when you cannot ship a 568 MB model.
+
+## Agent skill
+
+The [promptscan skill](../skills/promptscan/SKILL.md) covers CLI and MCP usage,
+coverage checks, and interpreting findings. Copy `skills/promptscan` into your
+agent’s skill directory (for example `~/.codex/skills/`). It uses the same pinned
+0.3.0 package and model as CI and MCP.

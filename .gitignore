@@ -108,6 +108,7 @@ logs/
 # Data files
 *.csv
 *.json
+!tests/fixtures/ci_cases.manifest.json
 *.xlsx
 *.xls
 

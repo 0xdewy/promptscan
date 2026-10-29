@@ -3,15 +3,15 @@
 Two detectors run on every input:
 
 - the classifier (``promptscan.classifier.Classifier``), which scores the whole text,
-  every HTML comment on its own, and any text hidden in Unicode tag characters;
+  contextual views of HTML comments, and decoded Unicode tag text in context;
 - a deterministic check for invisible text: zero-width characters, bidi overrides and
-  Unicode tag characters. These have no business in a prompt or instruction file and
-  are reported even when the model is unsure.
+  Unicode tag characters. These are hygiene warnings even when the model is unsure.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -20,6 +20,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
+from urllib.parse import quote
 
 TEXT_SUFFIXES = {
     ".md",
@@ -30,6 +31,17 @@ TEXT_SUFFIXES = {
     ".adoc",
     ".prompt",
     ".rules",
+    ".py",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
 }
 SKIP_DIRS = {
     ".git",
@@ -42,11 +54,16 @@ SKIP_DIRS = {
     ".tox",
     ".mypy_cache",
     ".ruff_cache",
+    ".pytest_cache",
+    ".cache",
 }
 IGNORE_FILE = ".promptscanignore"
 MAX_BYTES = 1_000_000
+SCANNER_POLICY_VERSION = "document-context-2"
 
-_HIDDEN = re.compile("[​⁠-⁤﻿‪-‮⁦-⁩\U000e0000-\U000e007f]+")
+_HIDDEN = re.compile(
+    "[\u200b\u2060-\u2064\ufeff\u202a-\u202e\u2066-\u2069\U000e0000-\U000e007f]+"
+)
 _COMMENT = re.compile(r"<!--(.*?)-->", re.S)
 _PARAGRAPH = re.compile(r"\n\s*\n")
 
@@ -59,6 +76,16 @@ class Finding:
     message: str
     snippet: str
     score: Optional[float] = None
+    fingerprint: Optional[str] = None
+
+    @property
+    def level(self) -> str:
+        return "error" if self.kind == "injection" else "warning"
+
+
+def fingerprint(kind: str, evidence: str) -> str:
+    value = kind + "\0" + evidence.strip("\r\n")
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _line_of(text: str, pos: int) -> int:
@@ -70,10 +97,10 @@ def _decode_tags(run: str) -> str:
 
 
 def hidden_text(text: str, path: str = "<text>") -> list[Finding]:
-    """Invisible or direction-changing characters, grouped per run. A leading BOM is fine."""
+    """Find invisible characters, grouped per run; allow a leading BOM."""
     out = []
     for m in _HIDDEN.finditer(text):
-        if m.start() == 0 and m.group() == "﻿":
+        if m.start() == 0 and m.group() == "\ufeff":
             continue
         run = m.group()
         cp = ord(run[0])
@@ -96,6 +123,7 @@ def hidden_text(text: str, path: str = "<text>") -> list[Finding]:
                 "hidden",
                 f"{msg} ({len(run)} chars)",
                 snippet.strip()[:200],
+                fingerprint=fingerprint("hidden", run),
             )
         )
     return out
@@ -106,23 +134,36 @@ def _snippet(s: str, n: int = 160) -> str:
     return s if len(s) <= n else s[:n] + "..."
 
 
-def scan_text(text: str, clf, path: str = "<text>") -> list[Finding]:
-    """All findings for one text. The injection finding points at the highest-scoring paragraph."""
+def classifier_segments(
+    text: str, findings: list[Finding]
+) -> list[tuple[str, int, str]]:
+    """Inputs scored for a file, shared by scanning and detector training."""
+    # A comment excerpt can lose the fact that it belongs to a quoted fixture.
+    # Keep complete documents; the model's window encoder carries their frame.
+    segments = []
+    # Decode each tag run in its own surrounding context. Never join unrelated
+    # runs into a fabricated instruction, and never truncate the decoded payload.
+    for match in _HIDDEN.finditer(text):
+        decoded = _decode_tags(match.group())
+        if decoded.strip():
+            segment = text[: match.start()] + decoded + text[match.end() :]
+            segments.append((segment, 1, " (hidden in Unicode tags)"))
+    if not any(segment == text for segment, _, _ in segments):
+        segments.append((text, 1, ""))
+    return segments
+
+
+def scan_text(
+    text: str, clf, path: str = "<text>", *, decision: Optional[dict] = None
+) -> list[Finding]:
+    """Find hidden text and injections; locate the highest-scoring paragraph."""
     findings = hidden_text(text, path)
-    # specific segments first so they win ties against the whole text
-    segments = [  # (text, line it starts on, description)
-        (m.group(1), _line_of(text, m.start(1)), " (inside an HTML comment)")
-        for m in _COMMENT.finditer(text)
-        if m.group(1).strip()
-    ]
-    tagged = [f for f in findings if f.message.startswith("Unicode tag")]
-    tags = "".join(f.snippet for f in tagged)
-    if tags.strip():
-        segments.append((tags, tagged[0].line, " (hidden in Unicode tag characters)"))
-    segments.append((text, 1, ""))
+    segments = classifier_segments(text, findings)
 
     scores = clf.score([s for s, _, _ in segments])
     best = max(range(len(segments)), key=scores.__getitem__)
+    if decision is not None:
+        decision["score"] = scores[best]
     if scores[best] < clf.threshold:
         return findings
 
@@ -133,6 +174,8 @@ def scan_text(text: str, clf, path: str = "<text>") -> list[Finding]:
         start, para = paragraphs[max(range(len(paragraphs)), key=pscores.__getitem__)]
     else:
         start, para = 0, seg
+    if not where and ("<!--" in para or "-->" in para):
+        where = " (near an HTML comment)"
     findings.append(
         Finding(
             path,
@@ -141,6 +184,7 @@ def scan_text(text: str, clf, path: str = "<text>") -> list[Finding]:
             f"prompt injection{where}",
             _snippet(para),
             round(scores[best], 4),
+            fingerprint("injection", para),
         )
     )
     return findings
@@ -188,23 +232,51 @@ def _ignore_patterns(root: Path, extra: Iterable[str]) -> list[str]:
 
 
 def iter_files(
-    paths: Iterable[str], include: Iterable[str] = (), exclude: Iterable[str] = ()
+    paths: Iterable[str],
+    include: Iterable[str] = (),
+    exclude: Iterable[str] = (),
+    skipped: Optional[list[dict]] = None,
 ) -> Iterator[Path]:
-    """Files to scan. Explicit files are always scanned; directories are walked for text files."""
+    """Walk supported text files; explicit files bypass extension filtering."""
     for raw in paths:
         root = Path(raw)
         patterns = _ignore_patterns(root, exclude)
+        if root.is_symlink():
+            if skipped is not None:
+                skipped.append({"path": str(root), "reason": "symlink"})
+            continue
         if root.is_file():
             if not _ignored(root.as_posix(), patterns):
                 yield root
+            elif skipped is not None:
+                skipped.append({"path": str(root), "reason": "excluded"})
             continue
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+            kept = []
+            for name in sorted(dirnames):
+                path = Path(dirpath, name)
+                if name in SKIP_DIRS or path.is_symlink():
+                    if skipped is not None:
+                        skipped.append({"path": str(path), "reason": "directory"})
+                else:
+                    kept.append(name)
+            dirnames[:] = kept
             for name in sorted(filenames):
                 p = Path(dirpath, name)
                 rel = p.relative_to(root).as_posix()
-                if is_text_file(p, include) and not _ignored(rel, patterns):
+                reason = (
+                    "symlink"
+                    if p.is_symlink()
+                    else "excluded"
+                    if _ignored(rel, patterns)
+                    else "unsupported_type"
+                    if not is_text_file(p, include)
+                    else None
+                )
+                if reason is None:
                     yield p
+                elif skipped is not None:
+                    skipped.append({"path": str(p), "reason": reason})
 
 
 def changed_files(
@@ -226,6 +298,7 @@ def changed_files(
         Path(ln)
         for ln in out.splitlines()
         if ln
+        and not Path(ln).is_symlink()
         and Path(ln).is_file()
         and is_text_file(Path(ln), include)
         and not _ignored(ln, patterns)
@@ -234,7 +307,7 @@ def changed_files(
 
 def read_text(path: Path) -> Optional[str]:
     """File contents, or None for binary or oversized files."""
-    if path.stat().st_size > MAX_BYTES:
+    if path.is_symlink() or path.stat().st_size > MAX_BYTES:
         return None
     data = path.read_bytes()
     if b"\0" in data[:8192]:
@@ -242,11 +315,24 @@ def read_text(path: Path) -> Optional[str]:
     return data.decode("utf-8", errors="replace")
 
 
-def scan_files(files: Iterable[Path], clf) -> tuple[int, list[Finding]]:
+def scan_files(
+    files: Iterable[Path], clf, skipped: Optional[list[dict]] = None
+) -> tuple[int, list[Finding]]:
     n, findings = 0, []
     for p in files:
         text = read_text(p)
         if text is None or not text.strip():
+            if skipped is not None:
+                reason = (
+                    "symlink"
+                    if p.is_symlink()
+                    else "oversized"
+                    if p.stat().st_size > MAX_BYTES
+                    else "binary"
+                    if text is None
+                    else "empty"
+                )
+                skipped.append({"path": str(p), "reason": reason})
             continue
         n += 1
         findings += scan_text(text, clf, p.as_posix())
@@ -254,9 +340,12 @@ def scan_files(files: Iterable[Path], clf) -> tuple[int, list[Finding]]:
 
 
 def load_classifier(
-    model: Optional[str] = None, threshold: Optional[float] = None, device: str = "cpu"
+    model: Optional[str] = None,
+    threshold: Optional[float] = None,
+    device: str = "cpu",
+    revision: Optional[str] = None,
 ):
-    """Load the classifier from a path, ``PROMPTSCAN_MODEL`` or the default Hugging Face repo."""
+    """Load from a path, ``PROMPTSCAN_MODEL``, or the default model repo."""
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     from transformers.utils import logging as hf_logging
@@ -267,7 +356,7 @@ def load_classifier(
 
     model = model or os.environ.get("PROMPTSCAN_MODEL")
     try:
-        clf = Classifier.load(model, device=device)
+        clf = Classifier.load(model, device=device, revision=revision)
     except Exception as e:  # OSError from transformers/hub, or a bad local dir
         print(
             f"promptscan: could not load model '{model or DEFAULT_REPO}': {e}\n"
@@ -281,10 +370,15 @@ def load_classifier(
     return clf
 
 
-def to_sarif(findings: list[Finding], version: str) -> dict:
+def to_sarif(findings: list[Finding], version: str, release=None) -> dict:
     rules = {
-        "injection": "Text that reads as an instruction to an AI model rather than content for a human.",
-        "hidden": "Invisible or direction-changing Unicode characters that can hide text from reviewers.",
+        "injection": (
+            "Suspected attempt to redirect an agent beyond the authorized task."
+        ),
+        "hidden": (
+            "Invisible or direction-changing Unicode characters "
+            "that can hide text from reviewers."
+        ),
     }
     return {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -302,10 +396,15 @@ def to_sarif(findings: list[Finding], version: str) -> dict:
                         ],
                     }
                 },
+                "properties": {"release": release},
                 "results": [
                     {
                         "ruleId": f.kind,
-                        "level": "error",
+                        "level": f.level,
+                        "partialFingerprints": {
+                            "promptscan/v1": f.fingerprint
+                            or fingerprint(f.kind, f.snippet)
+                        },
                         "message": {
                             "text": f.message
                             + (f" (score {f.score})" if f.score is not None else "")
@@ -313,7 +412,13 @@ def to_sarif(findings: list[Finding], version: str) -> dict:
                         "locations": [
                             {
                                 "physicalLocation": {
-                                    "artifactLocation": {"uri": f.path},
+                                    "artifactLocation": {
+                                        "uri": Path(f.path).as_uri()
+                                        if Path(f.path).is_absolute()
+                                        else quote(
+                                            f.path.replace(os.sep, "/"), safe="/"
+                                        )
+                                    },
                                     "region": {
                                         "startLine": f.line,
                                         "snippet": {"text": f.snippet},
@@ -329,12 +434,13 @@ def to_sarif(findings: list[Finding], version: str) -> dict:
     }
 
 
-def to_json(files: int, findings: list[Finding], threshold: float) -> str:
+def to_json(files: int, findings: list[Finding], threshold: float, **metadata) -> str:
     return json.dumps(
         {
             "files": files,
             "threshold": threshold,
-            "findings": [asdict(f) for f in findings],
+            "findings": [asdict(f) | {"level": f.level} for f in findings],
+            **metadata,
         },
         indent=1,
     )

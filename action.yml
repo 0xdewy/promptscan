@@ -9,13 +9,22 @@ inputs:
     required: false
     default: .
   changed-only:
-    description: On pull requests, scan only text files changed by the PR.
+    description: On pull requests, report new findings against the event base commit.
     required: false
     default: "true"
   fail:
-    description: Fail the job when something is found. Set "false" to only annotate.
+    description: Fail on blocking findings. Set "false" to only annotate.
     required: false
     default: "true"
+  fail-on:
+    description: Blocking rules (injection or all). Unicode hygiene is a warning by default.
+    default: injection
+  include:
+    description: Extra file globs, one per line.
+    default: ""
+  exclude:
+    description: Excluded path globs, one per line.
+    default: ""
   threshold:
     description: Override the model's decision threshold (0-1). Higher means fewer flags.
     required: false
@@ -25,7 +34,7 @@ inputs:
     required: false
     default: promptscan.sarif
   version:
-    description: promptscan version to install, e.g. "0.2.0". Empty installs the latest.
+    description: Exact PyPI version (0.3.0+). Empty installs the code bundled with this Action.
     required: false
     default: ""
 outputs:
@@ -38,33 +47,53 @@ runs:
     - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
+    - shell: bash
+      env:
+        ACTION_SOURCE: ${{ github.action_path }}
+        PACKAGE_VERSION: ${{ inputs.version }}
+      run: |
+        pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+        if [ -n "$PACKAGE_VERSION" ]; then
+          [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+          pip install --quiet "promptscan==$PACKAGE_VERSION"
+        else
+          pip install --quiet "$ACTION_SOURCE"
+        fi
+    - id: identity
+      shell: bash
+      run: |
+        python - <<'PY' >> "$GITHUB_OUTPUT"
+        from promptscan import __version__
+        from promptscan.classifier import DEFAULT_REVISION
+        print(f"key=promptscan-{__version__}-{DEFAULT_REVISION}")
+        PY
     - uses: actions/cache@v6
       with:
         path: ~/.cache/huggingface
-        key: promptscan-model-${{ inputs.version || 'latest' }}
-    - shell: bash
-      # CPU-only torch first: the default wheel pulls ~5 GB of CUDA libraries the runner never uses.
-      run: |
-        pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-        pip install --quiet "promptscan${{ inputs.version && format('=={0}', inputs.version) || '' }}"
+        key: ${{ runner.os }}-${{ steps.identity.outputs.key }}
     - shell: bash
       env:
-        BASE_REF: ${{ github.base_ref }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PATH_INPUT: ${{ inputs.path }}
         CHANGED_ONLY: ${{ inputs.changed-only }}
         FAIL: ${{ inputs.fail }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        INCLUDE: ${{ inputs.include }}
+        EXCLUDE: ${{ inputs.exclude }}
         THRESHOLD: ${{ inputs.threshold }}
         SARIF: ${{ inputs.sarif }}
       run: |
-        args=(--sarif "$SARIF")
+        args=(--sarif "$SARIF" --fail-on "$FAIL_ON")
         [ -n "$THRESHOLD" ] && args+=(--threshold "$THRESHOLD")
         [ "$FAIL" = "true" ] || args+=(--no-fail)
-        if [ "$CHANGED_ONLY" = "true" ] && [ -n "$BASE_REF" ]; then
-          # The checkout is the PR merged into the current base tip, so diffing against
-          # that tip yields exactly the PR's changes, even when the base moved after the
-          # PR was opened. (pull_request.base.sha is frozen at PR creation.)
-          git fetch --quiet --depth=1 origin "$BASE_REF"
-          promptscan --changed FETCH_HEAD "${args[@]}"
-        else
-          promptscan "$PATH_INPUT" "${args[@]}"
+        while IFS= read -r glob; do
+          [ -z "$glob" ] || args+=(--include "$glob")
+        done <<< "$INCLUDE"
+        while IFS= read -r glob; do
+          [ -z "$glob" ] || args+=(--exclude "$glob")
+        done <<< "$EXCLUDE"
+        if [ "$CHANGED_ONLY" = "true" ] && [ -n "$BASE_SHA" ]; then
+          git fetch --quiet --depth=1 origin "$BASE_SHA"
+          args+=(--changed FETCH_HEAD)
         fi
+        promptscan "${args[@]}" -- "$PATH_INPUT"

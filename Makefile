@@ -29,11 +29,11 @@ install:
 
 # Install with development dependencies
 dev:
-	uv pip install -e ".[dev]"
+	uv sync --extra dev --extra train --extra mcp
 
 # Run tests
 test:
-	uv run pytest tests/ -v
+	uv run --extra dev --extra train pytest tests/ -v
 
 # Run linting checks
 lint:

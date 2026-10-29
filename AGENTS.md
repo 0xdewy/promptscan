@@ -12,7 +12,7 @@ promptscan/
 ├── __init__.py      version, exports Classifier
 ├── classifier.py    Classifier.load/score/predict/save (training agent owns this)
 ├── scan.py          file walking, hidden-Unicode check, findings, JSON/SARIF output
-├── cli.py           `promptscan` entry point; exit 0 clean, 1 findings, 2 error
+├── cli.py           `promptscan` entry point; exit 0 no blockers, 1 blocking findings, 2 error
 ├── mcp_server.py    `promptscan-mcp`: scan_text, scan_many, scan_path
 └── utils/colors.py
 scripts/             build_dataset.py, train_v2.py, eval_suite.py, selfplay.py, rl_attacker.py
@@ -35,14 +35,14 @@ archive/             old CNN/LSTM/DistilBERT ensemble code, gitignored
 ## Commands
 
 ```bash
-uv run --with pytest pytest tests/          # tests
+uv run --extra dev --extra train pytest tests/          # tests
 uv run ruff check promptscan/ tests/        # lint (88 cols)
 PROMPTSCAN_MODEL=models/release uv run promptscan .   # dogfood; .promptscanignore skips README and fixtures
 uv run python scripts/eval_suite.py         # held-out evaluation
 uv build && twine check dist/*              # package
 HF_TOKEN=... uv run python scripts/publish_model.py models/release   # replace the HF model repo
 uv run python scripts/fetch_feedback.py     # pull website feedback into data/v2/raw/feedback.parquet (unverified labels)
-uv lock --upgrade && uv run pytest tests/   # dependency refresh; pip-audit via `uvx pip-audit -r <(uv export --no-hashes)`
+uv lock --upgrade && uv run --extra dev --extra train pytest tests/   # dependency refresh; pip-audit via `uvx pip-audit -r <(uv export --no-hashes)`
 ```
 
 ## Rules
@@ -53,3 +53,7 @@ uv lock --upgrade && uv run pytest tests/   # dependency refresh; pip-audit via 
   and in the `files:` regex of `.pre-commit-hooks.yaml`; keep them in sync.
 - Changes to detection output (findings, exit codes, SARIF) need a test in `tests/test_scan.py`.
 - Version lives in `pyproject.toml` and `promptscan/__init__.py`.
+
+- Unicode hygiene is a warning by default; `--fail-on all` blocks it.
+- PR review uses the base ignore policy and the same model/cutoff for base and head.
+- Keep benchmark labels/splits frozen; follow `docs/LABELS.md` for selection.

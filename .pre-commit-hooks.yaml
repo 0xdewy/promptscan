@@ -3,4 +3,4 @@
   description: Scan prompt and agent instruction files for prompt injection and hidden Unicode text.
   entry: promptscan --quiet
   language: python
-  files: \.(md|markdown|mdc|txt|rst|adoc|prompt|rules)$|rules$
+  files: (?i:\.(md|markdown|mdc|txt|rst|adoc|prompt|rules|py|js|jsx|mjs|cjs|ts|tsx|json|yaml|yml|toml)$)|rules$

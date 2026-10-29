@@ -19,14 +19,17 @@ def _classifier():
 
 def _result(text: str, label: str = "<text>") -> Dict[str, Any]:
     clf = _classifier()
-    findings = S.scan_text(text, clf, label)
+    decision = {}
+    findings = S.scan_text(text, clf, label, decision=decision)
     return {
         "prediction": "INJECTION"
         if any(f.kind == "injection" for f in findings)
         else "SAFE",
-        "score": clf.score([text])[0],
+        "score": decision["score"],
         "threshold": clf.threshold,
-        "findings": [asdict(f) for f in findings],
+        "findings": [asdict(f) | {"level": f.level} for f in findings],
+        "model": getattr(clf, "identity", None),
+        "scanner_policy": S.SCANNER_POLICY_VERSION,
     }
 
 
@@ -60,10 +63,19 @@ def main() -> None:
 
     @server.tool()
     def scan_path(path: str) -> Dict[str, Any]:
-        """Scan a file, or every text file under a directory (.md, .txt, rules files).
+        """Scan a file, or supported code, config and prompt files in a directory.
         Returns the file count and findings with path, line and snippet."""
-        n, findings = S.scan_files(S.iter_files([path]), _classifier())
-        return {"files": n, "findings": [asdict(f) for f in findings]}
+        skipped = []
+        clf = _classifier()
+        n, findings = S.scan_files(S.iter_files([path], skipped=skipped), clf, skipped)
+        return {
+            "files": n,
+            "findings": [asdict(f) | {"level": f.level} for f in findings],
+            "coverage": {"scanned_inputs": n, "skipped": skipped},
+            "model": getattr(clf, "identity", None),
+            "threshold": clf.threshold,
+            "scanner_policy": S.SCANNER_POLICY_VERSION,
+        }
 
     server.run()
 

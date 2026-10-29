@@ -16,10 +16,12 @@ Output: data/v2/raw/selfplay_<tag>.parquet with text, label, source.
 
   python scripts/selfplay.py --model models/v2-xsmall --tag r1 --batches 20
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import re
 import subprocess
@@ -33,6 +35,28 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from promptscan.classifier import Classifier  # noqa: E402
+from promptscan.scan import classifier_segments, hidden_text  # noqa: E402
+
+
+def detector_scores(classifier, texts):
+    """Use the complete scanner decision for attack generation and reward."""
+    segments, owners = [], []
+    for owner, text in enumerate(texts):
+        views = classifier_segments(text, hidden_text(text))
+        segments.extend(view for view, _, _ in views)
+        owners.extend([owner] * len(views))
+    if not segments:
+        return []
+    scores = classifier.score(segments)
+    if len(scores) != len(segments):
+        raise ValueError("classifier must return one score per scanner segment")
+    maximum = [0.0] * len(texts)
+    for owner, score in zip(owners, scores, strict=True):
+        if not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError("classifier returned an invalid probability")
+        maximum[owner] = max(maximum[owner], float(score))
+    return maximum
+
 
 rng = random.Random()
 
@@ -107,18 +131,52 @@ Texts:
 
 
 def claude(prompt: str) -> str:
-    r = subprocess.run(["claude", "-p", "--model", "claude-sonnet-5-5", "--output-format", "text"],
-                       input=prompt, capture_output=True, text=True, timeout=600)
+    # Generated attacks are untrusted, including when sent to a judge or twin writer.
+    r = subprocess.run(
+        [
+            "claude",
+            "-p",
+            "--model",
+            "claude-sonnet-5-5",
+            "--output-format",
+            "text",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            '{"mcpServers":{}}',
+            "--disable-slash-commands",
+            "--no-session-persistence",
+            "--setting-sources",
+            "",
+            "--settings",
+            '{"disableAllHooks":true}',
+        ],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     if r.returncode:
         raise RuntimeError(r.stderr[:200])
     return r.stdout
 
 
 def ollama(prompt: str, model: str = "qwen3:8b") -> str:
-    body = json.dumps({"model": model, "prompt": prompt, "stream": False, "think": False,
-                       "options": {"temperature": 0.9, "num_predict": 4000}}).encode()
-    req = urllib.request.Request("http://localhost:11434/api/generate", data=body,
-                                 headers={"content-type": "application/json"})
+    body = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.9, "num_predict": 4000},
+        }
+    ).encode()
+    req = urllib.request.Request(
+        "http://localhost:11434/api/generate",
+        data=body,
+        headers={"content-type": "application/json"},
+    )
     with urllib.request.urlopen(req, timeout=900) as r:
         return json.load(r)["response"]
 
@@ -132,39 +190,57 @@ def parse_json(text: str):
     start = text.find("[")
     if start < 0:
         raise ValueError("no JSON array")
-    return json.JSONDecoder().raw_decode(text[start:])[0]   # first array; ignore trailing text
+    return json.JSONDecoder().raw_decode(text[start:])[
+        0
+    ]  # first array; ignore trailing text
 
 
-def generate(backend: str, label: int, kind: str, n: int, exemplars: list[str]) -> list[dict]:
+def generate(
+    backend: str, label: int, kind: str, n: int, exemplars: list[str]
+) -> list[dict]:
     ex = ""
     if exemplars:
-        ex = "These earlier examples fooled the classifier; write different ones in the same spirit:\n" + \
-             "\n".join(f"- {e[:300]!r}" for e in exemplars[:5])
+        ex = (
+            "These earlier examples fooled the classifier; write different ones in the same spirit:\n"
+            + "\n".join(f"- {e[:300]!r}" for e in exemplars[:5])
+        )
     tmpl = ATTACK_PROMPT if label else DECOY_PROMPT
     try:
         items = parse_json(BACKENDS[backend](tmpl.format(n=n, kind=kind, exemplars=ex)))
     except Exception as e:  # refusal, bad JSON, timeout: skip this batch
-        print(f"  gen failed ({backend}, label {label}): {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+        print(
+            f"  gen failed ({backend}, label {label}): {type(e).__name__}: {str(e)[:120]}",
+            file=sys.stderr,
+        )
         return []
     out = []
     for it in items:
         t = (it.get("text") if isinstance(it, dict) else it) if it else None
         if isinstance(t, str) and 10 <= len(t.strip()) <= 6000:
-            out.append({"text": t.strip(), "label": label, "kind": kind, "backend": backend})
+            out.append(
+                {"text": t.strip(), "label": label, "kind": kind, "backend": backend}
+            )
     return out
 
 
 def judge(items: list[dict], backend: str = "claude") -> list[int]:
     verdicts = []
-    for s in range(0, len(items), 25):
-        chunk = items[s:s + 25]
-        listing = "\n\n".join(f"[{i + 1}]\n{it['text'][:1500]}" for i, it in enumerate(chunk))
+    batch = 1 if backend == "ollama" else 8
+    for s in range(0, len(items), batch):
+        chunk = items[s : s + batch]
+        listing = "\n\n".join(f"[{i + 1}]\n{it['text']}" for i, it in enumerate(chunk))
         try:
             v = parse_json(BACKENDS[backend](JUDGE_PROMPT.format(items=listing)))
-            v = [int(x) for x in v][:len(chunk)]
-            v += [-1] * (len(chunk) - len(v))
+            if (
+                not isinstance(v, list)
+                or len(v) != len(chunk)
+                or any(type(x) is not int or x not in (-1, 0, 1) for x in v)
+            ):
+                raise ValueError("expected exactly one -1/0/1 integer per text")
         except Exception as e:
-            print(f"  judge failed: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+            print(
+                f"  judge failed: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr
+            )
             v = [-1] * len(chunk)
         verdicts += v
     return verdicts
@@ -174,13 +250,25 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model", required=True)
     ap.add_argument("--tag", required=True)
-    ap.add_argument("--batches", type=int, default=16, help="generation calls per player")
+    ap.add_argument(
+        "--batches", type=int, default=16, help="generation calls per player"
+    )
     ap.add_argument("--per-batch", type=int, default=15)
     ap.add_argument("--backends", default="claude")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--focus", type=int, default=0, help="only use the first N attack and decoy kinds")
+    ap.add_argument(
+        "--focus",
+        type=int,
+        default=0,
+        help="only use the first N attack and decoy kinds",
+    )
     ap.add_argument("--judge", default="claude")
-    ap.add_argument("--keep-easy", type=float, default=0.25, help="fraction of non-fooling items kept for diversity")
+    ap.add_argument(
+        "--keep-easy",
+        type=float,
+        default=0.25,
+        help="fraction of non-fooling items kept for diversity",
+    )
     a = ap.parse_args()
 
     clf = Classifier.load(a.model, device=a.device)
@@ -191,16 +279,20 @@ def main() -> int:
 
     def one(label, i):
         kinds = ATTACK_KINDS if label else DECOY_KINDS
-        kind = rng.choice(kinds[:a.focus] if a.focus else kinds)
-        return generate(backends[i % len(backends)], label, kind, a.per_batch, fooled[label][-8:])
+        kind = rng.choice(kinds[: a.focus] if a.focus else kinds)
+        return generate(
+            backends[i % len(backends)], label, kind, a.per_batch, fooled[label][-8:]
+        )
 
     for round_ in range(a.batches // 4 or 1):
         with ThreadPoolExecutor(8) as ex:
-            batches = list(ex.map(lambda li: one(*li), [(l, i) for i in range(4) for l in (0, 1)]))
+            batches = list(
+                ex.map(lambda li: one(*li), [(l, i) for i in range(4) for l in (0, 1)])
+            )
         items = [it for b in batches for it in b]
         if not items:
             continue
-        scores = clf.score([it["text"] for it in items])
+        scores = detector_scores(clf, [it["text"] for it in items])
         for it, s in zip(items, scores):
             it["score"] = s
             fool = (s < clf.threshold) if it["label"] else (s >= clf.threshold)
@@ -210,8 +302,11 @@ def main() -> int:
                 fooled[it["label"]].append(it["text"])
             if fool or rng.random() < a.keep_easy:
                 kept.append(it)
-        print(f"round {round_}: attacks {stats[1][1]}/{stats[1][0]} missed, decoys {stats[0][1]}/{stats[0][0]} flagged, kept {len(kept)}",
-              file=sys.stderr, flush=True)
+        print(
+            f"round {round_}: attacks {stats[1][1]}/{stats[1][0]} missed, decoys {stats[0][1]}/{stats[0][0]} flagged, kept {len(kept)}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     verdicts = judge(kept, a.judge)
     rows = [dict(it, judged=v) for it, v in zip(kept, verdicts) if v == it["label"]]
